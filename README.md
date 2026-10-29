@@ -1,6 +1,6 @@
 # EasyLog Serial
 
-EasyLogger 的配套串口工作台 · **lyg** · **v0.3.23**。Tauri 2 + React + Rust，Windows 10/11。
+EasyLogger 的配套串口工作台 · **lyg** · **v0.3.24**。Tauri 2 + React + Rust，Windows 10/11。
 
 ![界面预览（默认浅色，多分类同时展开）](docs/ui-v0318.png)
 
@@ -26,6 +26,7 @@ EasyLogger 的配套串口工作台 · **lyg** · **v0.3.23**。Tauri 2 + React 
 | TCP Server：本地单端口监听、单客户端收发；客户端异常断开后继续监听等待重连，手动停止才关闭 | ✅ |
 | 高吞吐优化：日志宽度只测量最近窗口、无 ANSI 时跳过剥离正则、原始模式跳过解析；自动滚动采用传统逐行跟随到底部，不做连续平滑动画，EasyLog/原始一致 | ✅ |
 | 日志区查找：`Ctrl+F` 或“搜索”按钮，输入即高亮匹配，Enter / Shift+Enter 跳转，Esc 关闭 | ✅ |
+| 文本快捷操作：日志区选中后 Ctrl+C；日志/输入框右键菜单提供复制、全选、清除等 | ✅ |
 | 自动保存（独立功能）：同时写 JSONL（无损/可回放）和可读文本（时间戳 + RX/TX 文本），两者共用开关、分段和容量上限；手动保存、录制、自动保存全在工具目录 `logs` 下，文件名带时间和串口 | ✅ |
 | 真实设备联调 | ✅ COM5 @ 115200：勾选“连接后发送 2”后日志开始输出（RX 10.5 KB / 122 行）；发送 `AT^GT_CM=VERSION` 返回 `[VERSION]EL802K_...` |
 
@@ -50,6 +51,13 @@ EasyLogger 的配套串口工作台 · **lyg** · **v0.3.23**。Tauri 2 + React 
 - 查找条下方直接列出匹配行（时间 / 级别 / 方向 / 内容），**列表内同样高亮关键字**；命中函数名时显示高亮的函数名 + 内容，点击任意一行即可跳转并居中
 - `Enter` 下一个、`Shift+Enter` 上一个；`Esc` 关闭并清空
 - 查找不影响左侧过滤条件；只搜索当前显示出来的行
+
+### 文本复制与右键菜单
+
+- 日志区可直接拖选文本，按 **Ctrl+C** 复制选中内容
+- 日志区右键：复制选中、复制全部日志、查找、清除日志
+- 下发文本框及其他文本输入框右键：剪切、复制、粘贴、全选、清除
+- 菜单操作不改变日志过滤和滚动状态
 
 ### TCP Server
 
@@ -177,7 +185,7 @@ AT+CSQ
 
 ## 直接运行（免安装）
 
-免安装绿色版：[`release/EasyLog-Serial-0.3.23-portable.zip`](release/EasyLog-Serial-0.3.23-portable.zip)（约 2.0 MB）
+免安装绿色版：[`release/EasyLog-Serial-0.3.24-portable.zip`](release/EasyLog-Serial-0.3.24-portable.zip)（约 2.0 MB）
 
 - 解压到任意文件夹，双击 `EasyLogSerial.exe` 即可
 - 按住自定义标题栏空白处可拖动整个窗口；四边/四角可缩放

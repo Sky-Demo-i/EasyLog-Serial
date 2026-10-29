@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+} from "react";
 import Toolbar from "./components/Toolbar";
 import AppTitleBar, { WindowResizeHandles } from "./components/AppTitleBar";
 import LogView, { highlightText } from "./components/LogView";
@@ -203,6 +211,62 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
+type EditableText = HTMLInputElement | HTMLTextAreaElement;
+
+interface TextMenuState {
+  kind: "text" | "log";
+  x: number;
+  y: number;
+  target?: EditableText;
+  selected: string;
+}
+
+const MENU_INPUT_TYPES = new Set([
+  "text",
+  "search",
+  "url",
+  "tel",
+  "email",
+  "password",
+]);
+
+function isEditableText(element: Element | null): element is EditableText {
+  if (element instanceof HTMLTextAreaElement) return true;
+  if (!(element instanceof HTMLInputElement)) return false;
+  return MENU_INPUT_TYPES.has(element.type);
+}
+
+function selectedTextOf(target: EditableText): string {
+  const start = target.selectionStart ?? 0;
+  const end = target.selectionEnd ?? 0;
+  return end > start ? target.value.slice(start, end) : "";
+}
+
+function setNativeText(target: EditableText, value: string): void {
+  const proto =
+    target instanceof HTMLTextAreaElement
+      ? HTMLTextAreaElement.prototype
+      : HTMLInputElement.prototype;
+  const setter = Object.getOwnPropertyDescriptor(proto, "value")?.set;
+  setter?.call(target, value);
+  target.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+async function writeClipboard(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    const area = document.createElement("textarea");
+    area.value = text;
+    document.body.appendChild(area);
+    area.select();
+    const ok = document.execCommand("copy");
+    area.remove();
+    return ok;
+  }
+}
+
 const AT_CMD_PREFIX = "AT^GT_CM=";
 
 function withAtPrefix(text: string): string {
@@ -243,6 +307,7 @@ export default function App() {
   const [searchCaseSensitive, setSearchCaseSensitive] = useState(true);
   const [activeMatch, setActiveMatch] = useState(0);
   const [searchToken, setSearchToken] = useState(0);
+  const [textMenu, setTextMenu] = useState<TextMenuState | null>(null);
 
   const [transport, setTransport] = useState<"serial" | "tcp">(() =>
     localStorage.getItem("easylog.transport.v1") === "tcp" ? "tcp" : "serial",
@@ -667,6 +732,38 @@ export default function App() {
     return () => window.removeEventListener("keydown", handler);
   }, [searchOpen]);
 
+  useEffect(() => {
+    if (!textMenu) return;
+    const close = () => setTextMenu(null);
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setTextMenu(null);
+    };
+    document.addEventListener("mousedown", close);
+    window.addEventListener("blur", close);
+    window.addEventListener("resize", close);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      window.removeEventListener("blur", close);
+      window.removeEventListener("resize", close);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [textMenu]);
+
+  useEffect(() => {
+    const handler = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "c") return;
+      const text = window.getSelection()?.toString() ?? "";
+      if (!text) return;
+      event.preventDefault();
+      void writeClipboard(text).then((ok) => {
+        if (ok) setStatus(`已复制 ${text.length} 个字符`);
+      });
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
+
   // Persist UI state.
   useEffect(() => {
     localStorage.setItem(CONFIG_KEY, JSON.stringify(config));
@@ -978,18 +1075,103 @@ export default function App() {
       setStatus("没有可复制的内容");
       return;
     }
-    try {
-      await navigator.clipboard.writeText(text);
-      setStatus(`已复制 ${storeRef.current.all.length} 行`);
-    } catch {
-      const area = document.createElement("textarea");
-      area.value = text;
-      document.body.appendChild(area);
-      area.select();
-      document.execCommand("copy");
-      area.remove();
+    if (await writeClipboard(text)) {
       setStatus(`已复制 ${storeRef.current.all.length} 行`);
     }
+  };
+
+  const openTextMenu = (event: ReactMouseEvent) => {
+    const element = event.target as HTMLElement;
+    const editable = element.closest("input, textarea");
+    const x = Math.min(event.clientX, window.innerWidth - 190);
+    const y = Math.min(event.clientY, window.innerHeight - 230);
+
+    if (isEditableText(editable) && !editable.disabled) {
+      event.preventDefault();
+      setTextMenu({
+        kind: "text",
+        x,
+        y,
+        target: editable,
+        selected: selectedTextOf(editable),
+      });
+      return;
+    }
+
+    if (element.closest(".log-viewport")) {
+      event.preventDefault();
+      setTextMenu({
+        kind: "log",
+        x,
+        y,
+        selected: window.getSelection()?.toString() ?? "",
+      });
+      return;
+    }
+
+    setTextMenu(null);
+  };
+
+  const copyMenuSelection = async () => {
+    if (!textMenu) return;
+    const text =
+      textMenu.kind === "text" && textMenu.target
+        ? selectedTextOf(textMenu.target)
+        : textMenu.selected;
+    if (!text) return;
+    if (await writeClipboard(text)) {
+      setStatus(`已复制 ${text.length} 个字符`);
+    }
+    setTextMenu(null);
+  };
+
+  const cutMenuSelection = async () => {
+    const target = textMenu?.target;
+    if (!target || target.readOnly) return;
+    const selected = selectedTextOf(target);
+    if (!selected || !(await writeClipboard(selected))) return;
+    const start = target.selectionStart ?? 0;
+    const end = target.selectionEnd ?? start;
+    setNativeText(target, target.value.slice(0, start) + target.value.slice(end));
+    target.focus();
+    target.setSelectionRange(start, start);
+    setTextMenu(null);
+  };
+
+  const pasteIntoMenuTarget = async () => {
+    const target = textMenu?.target;
+    if (!target || target.readOnly) return;
+    try {
+      const text = await navigator.clipboard.readText();
+      const start = target.selectionStart ?? target.value.length;
+      const end = target.selectionEnd ?? start;
+      setNativeText(target, target.value.slice(0, start) + text + target.value.slice(end));
+      target.focus();
+      const cursor = start + text.length;
+      target.setSelectionRange(cursor, cursor);
+      setTextMenu(null);
+    } catch (error) {
+      setStatus(`粘贴失败：${normalizeError(error)}`);
+    }
+  };
+
+  const selectAllMenuTarget = () => {
+    const target = textMenu?.target;
+    if (!target) return;
+    target.focus();
+    target.select();
+    setTextMenu(null);
+  };
+
+  const clearMenuTarget = () => {
+    if (!textMenu) return;
+    if (textMenu.kind === "log") {
+      clearLog();
+    } else if (textMenu.target && !textMenu.target.readOnly) {
+      setNativeText(textMenu.target, "");
+      textMenu.target.focus();
+    }
+    setTextMenu(null);
   };
 
   const saveLog = async () => {
@@ -1076,7 +1258,7 @@ export default function App() {
   }
 
   return (
-    <div className="app" data-lines={storeRef.current.length}>
+    <div className="app" data-lines={storeRef.current.length} onContextMenu={openTextMenu}>
       <AppTitleBar />
       <WindowResizeHandles />
       <Toolbar
@@ -1512,6 +1694,74 @@ export default function App() {
           />
         )}
       </div>
+
+      {textMenu && (
+        <div
+          className="text-context-menu"
+          style={{ left: textMenu.x, top: textMenu.y }}
+          onMouseDown={(event) => event.stopPropagation()}
+        >
+          {textMenu.kind === "text" ? (
+            <>
+              <button
+                disabled={!textMenu.selected || textMenu.target?.readOnly}
+                onClick={() => void cutMenuSelection()}
+              >
+                剪切 <kbd>Ctrl+X</kbd>
+              </button>
+              <button
+                disabled={!textMenu.selected}
+                onClick={() => void copyMenuSelection()}
+              >
+                复制 <kbd>Ctrl+C</kbd>
+              </button>
+              <button
+                disabled={textMenu.target?.readOnly}
+                onClick={() => void pasteIntoMenuTarget()}
+              >
+                粘贴 <kbd>Ctrl+V</kbd>
+              </button>
+              <div className="text-menu-sep" />
+              <button onClick={selectAllMenuTarget}>
+                全选 <kbd>Ctrl+A</kbd>
+              </button>
+              <button
+                disabled={textMenu.target?.readOnly}
+                onClick={clearMenuTarget}
+              >
+                清除
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                disabled={!textMenu.selected}
+                onClick={() => void copyMenuSelection()}
+              >
+                复制选中
+              </button>
+              <button
+                onClick={() => {
+                  void copyLog();
+                  setTextMenu(null);
+                }}
+              >
+                复制全部日志
+              </button>
+              <div className="text-menu-sep" />
+              <button
+                onClick={() => {
+                  openSearch();
+                  setTextMenu(null);
+                }}
+              >
+                查找…
+              </button>
+              <button onClick={clearMenuTarget}>清除日志</button>
+            </>
+          )}
+        </div>
+      )}
 
       <StatusBar
         connected={connected}
