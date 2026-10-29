@@ -229,10 +229,15 @@ export default function App() {
   const [autoSaveInfo, setAutoSaveInfo] = useState<AutoSaveInfo | null>(null);
   const [keywordRules, setKeywordRules] =
     useState<KeywordColorRule[]>(loadKeywordRules);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [activeMatch, setActiveMatch] = useState(0);
+  const [searchToken, setSearchToken] = useState(0);
 
   const [version, bump] = useReducer((x: number) => x + 1, 0);
 
   const storeRef = useRef(new LineStore());
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const partialRef = useRef("");
   const decoderRef = useRef<TextDecoder>(new TextDecoder("utf-8"));
   const textBufRef = useRef("");
@@ -262,6 +267,42 @@ export default function App() {
     () => applyFilter(storeRef.current.all, filter, options.elogMode),
     [version, filter, options.elogMode],
   );
+
+  const searchMatches = useMemo<number[]>(() => {
+    const needle = searchTerm.trim().toLowerCase();
+    if (!needle) return [];
+    const matches: number[] = [];
+    view.visible.forEach((entry, index) => {
+      const haystack = `${entry.message}\n${entry.func}\n${entry.tag}`.toLowerCase();
+      if (haystack.includes(needle)) matches.push(index);
+    });
+    return matches;
+  }, [view.visible, searchTerm]);
+
+  const activeMatchRow = searchMatches[activeMatch] ?? null;
+
+  const openSearch = () => {
+    setSearchOpen(true);
+    setOption("autoScroll", false);
+    window.setTimeout(() => {
+      searchInputRef.current?.focus();
+      searchInputRef.current?.select();
+    }, 0);
+  };
+
+  const closeSearch = () => {
+    setSearchOpen(false);
+    setSearchTerm("");
+    setActiveMatch(0);
+  };
+
+  const goSearch = (delta: number) => {
+    if (searchMatches.length === 0) return;
+    setActiveMatch(
+      (prev) => (prev + delta + searchMatches.length) % searchMatches.length,
+    );
+    setSearchToken((value) => value + 1);
+  };
 
   const scheduleRender = useCallback(() => {
     if (renderTimerRef.current !== null) return;
@@ -533,6 +574,33 @@ export default function App() {
   useEffect(() => {
     document.documentElement.dataset.theme = options.theme;
   }, [options.theme]);
+
+  useEffect(() => {
+    setActiveMatch((prev) =>
+      searchMatches.length === 0 ? 0 : Math.min(prev, searchMatches.length - 1),
+    );
+  }, [searchMatches.length]);
+
+  useEffect(() => {
+    const handler = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "f") {
+        event.preventDefault();
+        setSearchOpen(true);
+        setOption("autoScroll", false);
+        window.setTimeout(() => {
+          searchInputRef.current?.focus();
+          searchInputRef.current?.select();
+        }, 0);
+      } else if (event.key === "Escape" && searchOpen) {
+        event.preventDefault();
+        setSearchOpen(false);
+        setSearchTerm("");
+        setActiveMatch(0);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [searchOpen]);
 
   // Persist UI state.
   useEffect(() => {
@@ -1018,6 +1086,9 @@ export default function App() {
                 <button onClick={clearLog}>清空</button>
                 <button onClick={copyLog}>复制</button>
                 <button onClick={saveLog}>保存</button>
+                <button onClick={openSearch} title="搜索日志 (Ctrl+F)">
+                  搜索
+                </button>
                 <span className="toolbar-sep" />
                 <button
                   className={`rec-btn ${recording ? "recording" : ""}`}
@@ -1069,6 +1140,54 @@ export default function App() {
                 </div>
               </div>
             </div>
+            {searchOpen && (
+              <div className="log-search">
+                <span className="log-search-icon">⌕</span>
+                <input
+                  ref={searchInputRef}
+                  value={searchTerm}
+                  placeholder="搜索日志、函数、Tag…（Enter 下一个，Shift+Enter 上一个）"
+                  onChange={(e) => {
+                    setSearchTerm(e.target.value);
+                    setActiveMatch(0);
+                    setSearchToken((value) => value + 1);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      goSearch(e.shiftKey ? -1 : 1);
+                    } else if (e.key === "Escape") {
+                      e.preventDefault();
+                      closeSearch();
+                    }
+                  }}
+                />
+                <span className="log-search-count">
+                  {searchMatches.length === 0
+                    ? "0/0"
+                    : `${activeMatch + 1}/${searchMatches.length}`}
+                </span>
+                <button
+                  className="icon-btn"
+                  title="上一个"
+                  disabled={searchMatches.length === 0}
+                  onClick={() => goSearch(-1)}
+                >
+                  ↑
+                </button>
+                <button
+                  className="icon-btn"
+                  title="下一个"
+                  disabled={searchMatches.length === 0}
+                  onClick={() => goSearch(1)}
+                >
+                  ↓
+                </button>
+                <button className="icon-btn" title="关闭搜索" onClick={closeSearch}>
+                  ×
+                </button>
+              </div>
+            )}
             <LogView
               lines={view.visible}
               partial={partialRef.current}
@@ -1081,6 +1200,9 @@ export default function App() {
                 />
               }
               colorRules={keywordRules}
+              searchTerm={searchTerm}
+              activeMatchRow={activeMatchRow}
+              scrollToken={searchToken}
               onAutoScrollChange={(value) => setOption("autoScroll", value)}
             />
           </section>

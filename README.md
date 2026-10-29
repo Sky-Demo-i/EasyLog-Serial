@@ -1,8 +1,8 @@
 # EasyLog Serial
 
-EasyLogger 的配套串口工作台 · **lyg** · **v0.3.11**。Tauri 2 + React + Rust，Windows 10/11。
+EasyLogger 的配套串口工作台 · **lyg** · **v0.3.12**。Tauri 2 + React + Rust，Windows 10/11。
 
-![界面预览（默认浅色，多分类同时展开）](docs/ui-v0311.png)
+![界面预览（默认浅色，多分类同时展开）](docs/ui-v0312.png)
 
 ## 当前进度
 
@@ -23,6 +23,7 @@ EasyLogger 的配套串口工作台 · **lyg** · **v0.3.11**。Tauri 2 + React 
 | ANSI 自动剥离（可切回“原始ANSI”）；即使显示原始转义码，也仍解析级别/Tag/函数，不再出现空白列 | ✅ |
 | EasyLog 模式开关：关闭后按 SSCOM 原生方式只显示时间/方向/消息，不解析级别、不按级别着色 | ✅ |
 | 原生模式关键字着色：左侧隐藏级别/Tag，改用“关键字 + 颜色”规则，命中整行着色；切回 EasyLog 后恢复级别/Tag | ✅ |
+| 日志区查找：`Ctrl+F` 或“搜索”按钮，输入即高亮匹配，Enter / Shift+Enter 跳转，Esc 关闭 | ✅ |
 | 自动保存（独立功能）：自动录制为与手动录制相同的 JSONL 格式（含 rx/tx/时间戳），保存在工具目录 `logs\auto`；分段循环覆盖，上限可在 5/10/20/50/100MB 中选择 | ✅ |
 | 真实设备联调 | ✅ COM5 @ 115200：勾选“连接后发送 2”后日志开始输出（RX 10.5 KB / 122 行）；发送 `AT^GT_CM=VERSION` 返回 `[VERSION]EL802K_...` |
 
@@ -38,6 +39,14 @@ EasyLogger 的配套串口工作台 · **lyg** · **v0.3.11**。Tauri 2 + React 
 日志格式与解析规则见 [`docs/上位机设计方案.md`](docs/上位机设计方案.md)，可执行规格见 [`tools/elog_parse.py`](tools/elog_parse.py)。
 
 > 过滤栏在左侧：级别复选框控制显示哪些级别；点 Tag 只看该 Tag（可多选）；关键字支持正则与反向。状态栏显示“显示行 / 总行”。
+
+### 日志内查找
+
+- `Ctrl+F` 或接收工具栏的 **“搜索”** 打开查找条
+- 输入即高亮当前可见行里的匹配内容，并显示 `当前/总数`
+- `Enter` 下一个、`Shift+Enter` 上一个；当前匹配行会高亮并滚到视口中间
+- `Esc` 关闭并清空搜索
+- 查找不影响左侧过滤条件；只搜索当前显示出来的行
 
 ### 录制与回放
 
@@ -144,7 +153,7 @@ AT+CSQ
 
 ## 直接运行（免安装）
 
-免安装绿色版：[`release/EasyLog-Serial-0.3.11-portable.zip`](release/EasyLog-Serial-0.3.11-portable.zip)（约 1.9 MB）
+免安装绿色版：[`release/EasyLog-Serial-0.3.12-portable.zip`](release/EasyLog-Serial-0.3.12-portable.zip)（约 1.9 MB）
 
 - 解压到任意文件夹，双击 `EasyLogSerial.exe` 即可
 - 按住自定义标题栏空白处可拖动整个窗口；四边/四角可缩放

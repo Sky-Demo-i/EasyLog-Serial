@@ -24,7 +24,33 @@ interface Props {
   paused: boolean;
   header: ReactNode;
   colorRules: KeywordColorRule[];
+  searchTerm: string;
+  activeMatchRow: number | null;
+  scrollToken: number;
   onAutoScrollChange: (value: boolean) => void;
+}
+
+function highlightText(text: string, search: string): ReactNode {
+  const needle = search.trim();
+  if (!needle || !text) return text;
+  const lower = text.toLowerCase();
+  const target = needle.toLowerCase();
+  const parts: ReactNode[] = [];
+  let cursor = 0;
+  let index = lower.indexOf(target, cursor);
+
+  while (index !== -1) {
+    if (index > cursor) parts.push(text.slice(cursor, index));
+    parts.push(
+      <mark key={`${index}-${cursor}`}>{text.slice(index, index + needle.length)}</mark>,
+    );
+    cursor = index + needle.length;
+    index = lower.indexOf(target, cursor);
+  }
+
+  if (parts.length === 0) return text;
+  if (cursor < text.length) parts.push(text.slice(cursor));
+  return parts;
 }
 
 function keywordColor(entry: LogEntry, rules: KeywordColorRule[]): string | null {
@@ -50,6 +76,9 @@ export default function LogView({
   paused,
   header,
   colorRules,
+  searchTerm,
+  activeMatchRow,
+  scrollToken,
   onAutoScrollChange,
 }: Props) {
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -120,6 +149,15 @@ export default function LogView({
     el.scrollTop = el.scrollHeight;
   }, [lines.length, partial, options.autoScroll, height, rowHeight]);
 
+  useLayoutEffect(() => {
+    const el = viewportRef.current;
+    if (!el || activeMatchRow === null) return;
+    el.scrollTop = Math.max(
+      0,
+      HEADER_HEIGHT + activeMatchRow * rowHeight - el.clientHeight / 2,
+    );
+  }, [scrollToken, activeMatchRow, rowHeight]);
+
   const visibleCount = Math.max(1, Math.ceil((height || 600) / rowHeight));
   const effectiveScrollTop = Math.max(0, scrollTop - HEADER_HEIGHT);
   const start = Math.max(0, Math.floor(effectiveScrollTop / rowHeight) - 8);
@@ -144,7 +182,9 @@ export default function LogView({
     rows.push(
       <div
         key={isPartial ? "partial" : entry.id}
-        className={`log-row ${entry.dir} ${levelClass(entry, showMeta)} ${dim ? "dim" : ""}`}
+        className={`log-row ${entry.dir} ${levelClass(entry, showMeta)} ${dim ? "dim" : ""} ${
+          activeMatchRow === index ? "search-active" : ""
+        }`}
         style={rowStyle}
         title={entry.text}
       >
@@ -170,7 +210,7 @@ export default function LogView({
         )}
         {showMeta && (
           <span className="col-tag" style={{ width: options.tagWidth }}>
-            {entry.tag}
+            {highlightText(entry.tag, searchTerm)}
           </span>
         )}
         {showMeta && (
@@ -179,7 +219,7 @@ export default function LogView({
             style={{ width: options.funcWidth }}
             title={entry.func ? `${entry.func}:${entry.lineNo}` : ""}
           >
-            {entry.parsed ? entry.func : ""}
+            {highlightText(entry.parsed ? entry.func : "", searchTerm)}
           </span>
         )}
         {showMeta && (
@@ -187,7 +227,7 @@ export default function LogView({
             {entry.parsed && entry.lineNo ? entry.lineNo : ""}
           </span>
         )}
-        <span className="col-msg">{entry.message}</span>
+        <span className="col-msg">{highlightText(entry.message, searchTerm)}</span>
       </div>,
     );
   }
