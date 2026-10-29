@@ -1065,7 +1065,7 @@ export default function App() {
                 </label>
                 <label
                   className="check"
-                  title={`自动保存接收内容到工具目录 logs\\auto（最多 10MB，循环覆盖最旧文件）${
+                  title={`自动保存接收内容到工具目录 logs\\auto（JSONL + 时间戳文本，最多 10MB，循环覆盖最旧分段）${
                     autoSaveInfo?.dir ? `\n${autoSaveInfo.dir}` : ""
                   }`}
                 >
