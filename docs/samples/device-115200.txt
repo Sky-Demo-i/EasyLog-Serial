@@ -1,0 +1,117 @@
+[0m
+[32;22mD/TRK    (868 master_gnss_decode_data_convert)GPS[0]0 BDS[0]0 GLO[0]0 GAL[0]0 snr:0 interfe:0 chip:10 state:0 time:00-00-00 00:00:00[0m
+[34;22mV/TRK    (1075 track_master_gnss_update_notify_handle)SCAN[0m
+[34;22mV/TRK    (201 track_master_gnss_nofix_ten_minutes_check)flag:1,state:1[0m
+[34;22mV/TRK    (1742 gnss_dataRMC)$GNRMC,,V,,,,,,,,,,N,V*37
+[0m
+[34;22mV/TRK    (360 jm_sensor_sc7a20h_get_xyz)raw:80 07 d0 09 60 c4, X = 30  Y = 39  Z = -239 [0m
+[32;22mD/TRK    (255 track_master_rollover_norm_check)x:y:z=1:22:20 over:2 acc:244 stage_t:2,  (30:39:-239)[0m
+[34;22mV/TRK    (807 cust_pal_adc_measure_EL802K)vchr:2816, vext:12813 ext_power_flag:1 last_flag:1[0m
+[34;22mV/TRK    (850 master_adc_get_value_cycle_check_handle)EXT:12813, BAT:4193, EXT_F:12813, BAT_F:4193[0m
+[34;22mV/TRK    (153 jm_pal_wdt_kick)kick:WDT_MCU[0m
+[34;22mV/TRK    (1434 gnss_dataGGA)$GNGGA,,,,,,0,00,,,M,,M,,*78
+[0m
+[34;22mV/TRK    (2184 master_gnss_nmea_one_block_decode)nmea non-support (-1):$GQGSV,1,1,0,1*55
+[0m
+[34;22mV/TRK    (2184 master_gnss_nmea_one_block_decode)nmea non-support (-1):$GQGSV,1,1,0,8*5C
+[0m
+[32;22mD/TRK    (868 master_gnss_decode_data_convert)GPS[0]0 BDS[0]0 GLO[0]0 GAL[0]0 snr:0 interfe:0 chip:10 state:0 time:00-00-00 00:00:00[0m
+[34;22mV/TRK    (1075 track_master_gnss_update_notify_handle)SCAN[0m
+[34;22mV/TRK    (201 track_master_gnss_nofix_ten_minutes_check)flag:1,state:1[0m
+[34;22mV/TRK    (1742 gnss_dataRMC)$GNRMC,,V,,,,,,,,,,N,V*37
+[0m
+[36;22mI/TRK    (162 jm_pal_sleep_mode_enable)mod=3,enable=1,status=FFFB, sleep disable[0m
+[34;22mV/TRK    (185 jm_pal_get_utc_time)[480],1970-1-1 8:1:40, 480[0m
+[36;22mI/TRK    (2490 track_master_gnss_epo_check_handle)Year:1970[0m
+[34;22mV/TRK    (360 jm_sensor_sc7a20h_get_xyz)raw:f0 06 50 09 40 c4, X = 27  Y = 37  Z = -239 [0m
+[32;22mD/TRK    (255 track_master_rollover_norm_check)x:y:z=1:22:20 over:2 acc:243 stage_t:0,  (27:37:-239)[0m
+[34;22mV/TRK    (807 cust_pal_adc_measure_EL802K)vchr:2829, vext:12813 ext_power_flag:1 last_flag:1[0m
+[34;22mV/TRK    (850 master_adc_get_value_cycle_check_handle)EXT:12813, BAT:4193, EXT_F:12813, BAT_F:4193[0m
+[34;22mV/TRK    (185 jm_pal_get_utc_time)[480],1970-1-1 8:1:41, 480[0m
+[34;22mV/TRK    (185 jm_pal_get_utc_time)[480],1970-1-1 8:1:41, 480[0m
+[34;22mV/TRK    (1434 gnss_dataGGA)$GNGGA,,,,,,0,00,,,M,,M,,*78
+[0m
+[34;22mV/TRK    (2184 master_gnss_nmea_one_block_decode)nmea non-support (-1):$GQGSV,1,1,0,1*55
+[0m
+[34;22mV/TRK    (2184 master_gnss_nmea_one_block_decode)nmea non-support (-1):$GQGSV,1,1,0,8*5C
+[0m
+[32;22mD/TRK    (868 master_gnss_decode_data_convert)GPS[0]0 BDS[0]0 GLO[0]0 GAL[0]0 snr:0 interfe:0 chip:10 state:0 time:00-00-00 00:00:00[0m
+[34;22mV/TRK    (1075 track_master_gnss_update_notify_handle)SCAN[0m
+[34;22mV/TRK    (201 track_master_gnss_nofix_ten_minutes_check)flag:1,state:1[0m
+[34;22mV/TRK    (1742 gnss_dataRMC)$GNRMC,,V,,,,,,,,,,N,V*37
+[0m
+[34;22mV/TRK    (153 jm_pal_wdt_kick)kick:WDT_MCU[0m
+[34;22mV/TRK    (360 jm_sensor_sc7a20h_get_xyz)raw:b0 07 40 09 c0 c3, X = 30  Y = 37  Z = -241 [0m
+[32;22mD/TRK    (255 track_master_rollover_norm_check)x:y:z=1:22:20 over:2 acc:245 stage_t:1,  (30:37:-241)[0m
+[34;22mV/TRK    (807 cust_pal_adc_measure_EL802K)vchr:2851, vext:12813 ext_power_flag:1 last_flag:1[0m
+[34;22mV/TRK    (850 master_adc_get_value_cycle_check_handle)EXT:12813, BAT:4193, EXT_F:12813, BAT_F:4193[0m
+[34;22mV/TRK    (1434 gnss_dataGGA)$GNGGA,,,,,,0,00,,,M,,M,,*78
+[0m
+[34;22mV/TRK    (2184 master_gnss_nmea_one_block_decode)nmea non-support (-1):$GQGSV,1,1,0,1*55
+[0m
+[34;22mV/TRK    (2184 master_gnss_nmea_one_block_decode)nmea non-support (-1):$GQGSV,1,1,0,8*5C
+[0m
+[32;22mD/TRK    (868 master_gnss_decode_data_convert)GPS[0]0 BDS[0]0 GLO[0]0 GAL[0]0 snr:0 interfe:0 chip:10 state:0 time:00-00-00 00:00:00[0m
+[34;22mV/TRK    (1075 track_master_gnss_update_notify_handle)SCAN[0m
+[34;22mV/TRK    (201 track_master_gnss_nofix_ten_minutes_check)flag:1,state:1[0m
+[34;22mV/TRK    (1742 gnss_dataRMC)$GNRMC,,V,,,,,,,,,,N,V*37
+[0m
+[34;22mV/TRK    (360 jm_sensor_sc7a20h_get_xyz)raw:70 07 30 09 50 c4, X = 29  Y = 36  Z = -239 [0m
+[32;22mD/TRK    (255 track_master_rollover_norm_check)x:y:z=1:22:20 over:2 acc:243 stage_t:2,  (29:36:-239)[0m
+[34;22mV/TRK    (807 cust_pal_adc_measure_EL802K)vchr:2842, vext:12813 ext_power_flag:1 last_flag:1[0m
+[34;22mV/TRK    (850 master_adc_get_value_cycle_check_handle)EXT:12813, BAT:4193, EXT_F:12813, BAT_F:4193[0m
+[34;22mV/TRK    (153 jm_pal_wdt_kick)kick:WDT_MCU[0m
+[34;22mV/TRK    (185 jm_pal_get_utc_time)[480],1970-1-1 8:1:43, 480[0m
+[34;22mV/TRK    (185 jm_pal_get_utc_time)[480],1970-1-1 8:1:43, 480[0m
+[34;22mV/TRK    (1434 gnss_dataGGA)$GNGGA,,,,,,0,00,,,M,,M,,*78
+[0m
+[34;22mV/TRK    (2184 master_gnss_nmea_one_block_decode)nmea non-support (-1):$GQGSV,1,1,0,1*55
+[0m
+[34;22mV/TRK    (2184 master_gnss_nmea_one_block_decode)nmea non-support (-1):$GQGSV,1,1,0,8*5C
+[0m
+[32;22mD/TRK    (868 master_gnss_decode_data_convert)GPS[0]0 BDS[0]0 GLO[0]0 GAL[0]0 snr:0 interfe:0 chip:10 state:0 time:00-00-00 00:00:00[0m
+[34;22mV/TRK    (1075 track_master_gnss_update_notify_handle)SCAN[0m
+[34;22mV/TRK    (201 track_master_gnss_nofix_ten_minutes_check)flag:1,state:1[0m
+[34;22mV/TRK    (1742 gnss_dataRMC)$GNRMC,,V,,,,,,,,,,N,V*37
+[0m
+[34;22mV/TRK    (360 jm_sensor_sc7a20h_get_xyz)raw:b0 06 30 09 90 c3, X = 26  Y = 36  Z = -242 [0m
+[32;22mD/TRK    (255 track_master_rollover_norm_check)x:y:z=1:22:20 over:2 acc:246 stage_t:0,  (26:36:-242)[0m
+[34;22mV/TRK    (807 cust_pal_adc_measure_EL802K)vchr:2868, vext:12813 ext_power_flag:1 last_flag:1[0m
+[34;22mV/TRK    (850 master_adc_get_value_cycle_check_handle)EXT:12813, BAT:4193, EXT_F:12813, BAT_F:4193[0m
+[34;22mV/TRK    (1434 gnss_dataGGA)$GNGGA,,,,,,0,00,,,M,,M,,*78
+[0m
+[34;22mV/TRK    (2184 master_gnss_nmea_one_block_decode)nmea non-support (-1):$GQGSV,1,1,0,1*55
+[0m
+[34;22mV/TRK    (2184 master_gnss_nmea_one_block_decode)nmea non-support (-1):$GQGSV,1,1,0,8*5C
+[0m
+[32;22mD/TRK    (868 master_gnss_decode_data_convert)GPS[0]0 BDS[0]0 GLO[0]0 GAL[0]0 snr:0 interfe:0 chip:10 state:0 time:00-00-00 00:00:00[0m
+[34;22mV/TRK    (1075 track_master_gnss_update_notify_handle)SCAN[0m
+[34;22mV/TRK    (201 track_master_gnss_nofix_ten_minutes_check)flag:1,state:1[0m
+[34;22mV/TRK    (1742 gnss_dataRMC)$GNRMC,,V,,,,,,,,,,N,V*37
+[0m
+[34;22mV/TRK    (153 jm_pal_wdt_kick)kick:WDT_MCU[0m
+[34;22mV/TRK    (360 jm_sensor_sc7a20h_get_xyz)raw:90 06 00 09 10 c4, X = 26  Y = 36  Z = -240 [0m
+[32;22mD/TRK    (255 track_master_rollover_norm_check)x:y:z=1:22:20 over:2 acc:244 stage_t:1,  (26:36:-240)[0m
+[34;22mV/TRK    (807 cust_pal_adc_measure_EL802K)vchr:2864, vext:12813 ext_power_flag:1 last_flag:1[0m
+[34;22mV/TRK    (850 master_adc_get_value_cycle_check_handle)EXT:12813, BAT:4193, EXT_F:12813, BAT_F:4193[0m
+[34;22mV/TRK    (185 jm_pal_get_utc_time)[480],1970-1-1 8:1:45, 480[0m
+[34;22mV/TRK    (185 jm_pal_get_utc_time)[480],1970-1-1 8:1:45, 480[0m
+[34;22mV/TRK    (1434 gnss_dataGGA)$GNGGA,,,,,,0,00,,,M,,M,,*78
+[0m
+[34;22mV/TRK    (2184 master_gnss_nmea_one_block_decode)nmea non-support (-1):$GQGSV,1,1,0,1*55
+[0m
+[34;22mV/TRK    (2184 master_gnss_nmea_one_block_decode)nmea non-support (-1):$GQGSV,1,1,0,8*5C
+[0m
+[32;22mD/TRK    (868 master_gnss_decode_data_convert)GPS[0]0 BDS[0]0 GLO[0]0 GAL[0]0 snr:0 interfe:0 chip:10 state:0 time:00-00-00 00:00:00[0m
+[34;22mV/TRK    (1075 track_master_gnss_update_notify_handle)SCAN[0m
+[34;22mV/TRK    (201 track_master_gnss_nofix_ten_minutes_check)flag:1,state:1[0m
+[34;22mV/TRK    (1742 gnss_dataRMC)$GNRMC,,V,,,,,,,,,,N,V*37
+[0m
+[34;22mV/TRK    (185 jm_pal_get_utc_time)[480],1970-1-1 8:1:45, 480[0m
+[36;22mI/TRK    (2490 track_master_gnss_epo_check_handle)Year:1970[0m
+[34;22mV/TRK    (360 jm_sensor_sc7a20h_get_xyz)raw:50 07 90 09 c0 c3, X = 29  Y = 38  Z = -241 [0m
+[32;22mD/TRK    (255 track_master_rollover_norm_check)x:y:z=1:22:20 over:2 acc:245 stage_t:2,  (29:38:-241)[0m
+[34;22mV/TRK    (807 cust_pal_adc_measure_EL802K)vchr:2873, vext:12813 ext_power_flag:1 last_flag:1[0m
+[34;22mV/TRK    (850 master_adc_get_value_cycle_check_handle)EXT:12813, BAT:4193, EXT_F:12813, BAT_F:4193[0m
+[34;22mV/TRK    (153 jm_pal_wdt_kick)kick:WDT_MCU[0m
+[34;22mV/TRK    (1434 gnss_dataGGA)$GNGGA,,,,,,0,00,,,M,,M,,*78
