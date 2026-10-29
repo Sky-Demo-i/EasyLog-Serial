@@ -1,6 +1,6 @@
 # EasyLog Serial
 
-EasyLogger 的配套串口工作台 · **lyg** · **v0.3.22**。Tauri 2 + React + Rust，Windows 10/11。
+EasyLogger 的配套串口工作台 · **lyg** · **v0.3.23**。Tauri 2 + React + Rust，Windows 10/11。
 
 ![界面预览（默认浅色，多分类同时展开）](docs/ui-v0318.png)
 
@@ -130,6 +130,7 @@ EasyLogger 的配套串口工作台 · **lyg** · **v0.3.22**。Tauri 2 + React 
 - 新建分类后该指令立即移入；导入/导出 JSON 会保留 `category`
 - 每个分类末尾固定有一行 **“＋ 新指令”**：填名称和内容后按回车或点“添加”，指令立即进入该分类，并自动再留一行空行继续添加
 - “发送勾选”只发送当前搜索/列表中打勾的指令
+- 每条指令行都有 **ms 延时输入框**；发送勾选时，本条发送完等待该时长再发下一条，`0` 表示不等待
 
 ### 发送 AT 前缀
 
@@ -176,7 +177,7 @@ AT+CSQ
 
 ## 直接运行（免安装）
 
-免安装绿色版：[`release/EasyLog-Serial-0.3.22-portable.zip`](release/EasyLog-Serial-0.3.22-portable.zip)（约 2.0 MB）
+免安装绿色版：[`release/EasyLog-Serial-0.3.23-portable.zip`](release/EasyLog-Serial-0.3.23-portable.zip)（约 2.0 MB）
 
 - 解压到任意文件夹，双击 `EasyLogSerial.exe` 即可
 - 按住自定义标题栏空白处可拖动整个窗口；四边/四角可缩放

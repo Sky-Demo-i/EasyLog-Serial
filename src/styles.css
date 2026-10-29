@@ -1860,6 +1860,43 @@ body.row-resizing * {
   font-size: 9px;
 }
 
+.quick-delay-wrap {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  flex: none;
+  color: var(--faint);
+  font-size: 9px;
+}
+
+.quick-delay {
+  width: 38px;
+  height: 22px;
+  padding: 0 2px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--muted);
+  font-family: var(--mono, monospace);
+  font-size: 9.5px;
+  text-align: right;
+}
+
+.quick-delay:hover {
+  border-color: var(--border);
+}
+
+.quick-delay:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.quick-delay::-webkit-inner-spin-button,
+.quick-delay::-webkit-outer-spin-button {
+  margin: 0;
+  opacity: 0.35;
+}
+
 .quick-empty {
   padding: 18px 10px;
   color: var(--muted);

@@ -1019,13 +1019,15 @@ export default function App() {
     resolveAppend(command.append, append);
 
   const sendAll = async (list: QuickCommand[]) => {
-    for (const command of list) {
-      if (!command.enabled) continue;
+    const sendable = list.filter((command) => command.enabled);
+    for (let index = 0; index < sendable.length; index++) {
+      const command = sendable[index];
       const ok = await doSend(command.data, command.hex, resolveCommandAppend(command));
       if (!ok) break;
-      // SSCOM stores a per-row delay (often 1000 ms). Cap it so one 99s OTA row
-      // does not freeze a whole sequence.
-      await delay(Math.min(5000, Math.max(20, command.delayMs ?? 80)));
+      if (index < sendable.length - 1) {
+        const gap = Math.min(10000, Math.max(0, command.delayMs ?? 0));
+        if (gap > 0) await delay(gap);
+      }
     }
   };
 

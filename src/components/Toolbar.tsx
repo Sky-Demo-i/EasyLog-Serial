@@ -118,7 +118,7 @@ export default function Toolbar({
         {transport === "serial" ? (
           <>
         <label className="field port-field">
-          <span>串口</span>
+          <span>端口</span>
           <select
             value={config.portName}
             onChange={(e) => onConfigChange({ portName: e.target.value })}

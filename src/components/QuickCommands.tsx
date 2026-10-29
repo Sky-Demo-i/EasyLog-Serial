@@ -29,10 +29,6 @@ function categoryOf(command: QuickCommand): string {
   return command.category?.trim() || UNCATEGORIZED;
 }
 
-function formatDelay(ms: number): string {
-  return ms >= 1000 ? `${Math.round(ms / 1000)}s` : `${ms}ms`;
-}
-
 export default function QuickCommands({
   commands,
   connected,
@@ -270,7 +266,7 @@ export default function QuickCommands({
                     key={command.id}
                     title={`双击载入到发送框｜分类：${categoryOf(command)}｜${
                       command.append === "global" ? "跟随发送框结尾" : `结尾 ${command.append}`
-                    }${command.delayMs ? `｜延时 ${command.delayMs}ms` : ""}`}
+                    }`}
                     onDoubleClick={() => onLoad(command)}
                   >
                     <input
@@ -325,11 +321,26 @@ export default function QuickCommands({
                         H
                       </span>
                     )}
-                    {command.delayMs && command.delayMs !== 1000 ? (
-                      <span className="badge" title={`发送后延时 ${command.delayMs}ms`}>
-                        {formatDelay(command.delayMs)}
-                      </span>
-                    ) : null}
+                    <span className="quick-delay-wrap" title="发送勾选时，本条发送后等待的时间">
+                      <input
+                        className="quick-delay"
+                        type="number"
+                        min={0}
+                        max={10000}
+                        step={50}
+                        value={command.delayMs ?? 0}
+                        aria-label="发送后延时（毫秒）"
+                        onDoubleClick={(e) => e.stopPropagation()}
+                        onChange={(e) => {
+                          const ms = Math.min(
+                            10000,
+                            Math.max(0, Math.floor(Number(e.target.value) || 0)),
+                          );
+                          update(command.id, { delayMs: ms });
+                        }}
+                      />
+                      <span>ms</span>
+                    </span>
                     <button
                       className="icon-btn"
                       title="载入到发送框"
