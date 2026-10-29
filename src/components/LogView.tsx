@@ -55,7 +55,7 @@ export function highlightText(text: string, search: string, caseSensitive: boole
 }
 
 function keywordColor(entry: LogEntry, rules: KeywordColorRule[]): string | null {
-  const text = entry.message.toLowerCase();
+  const text = `${entry.message}\n${entry.func}\n${entry.tag}`.toLowerCase();
   for (const rule of rules) {
     const keyword = rule.keyword.trim().toLowerCase();
     if (keyword && text.includes(keyword)) return rule.color;
@@ -175,8 +175,9 @@ export default function LogView({
     const entry = isPartial ? partialEntry! : lines[index];
     const showMeta = options.elogMode;
     const displayText = showMeta ? entry.message : entry.text;
-    const dim = showMeta && entry.parsed && (entry.level === "V" || entry.level === "D");
-    const customColor = showMeta ? null : keywordColor(entry, colorRules);
+    const customColor = keywordColor(entry, colorRules);
+    const dim =
+      showMeta && !customColor && entry.parsed && (entry.level === "V" || entry.level === "D");
     const rowStyle: CSSProperties = {
       top: index * rowHeight,
       height: rowHeight,
@@ -190,8 +191,8 @@ export default function LogView({
       <div
         key={isPartial ? "partial" : entry.id}
         className={`log-row ${entry.dir} ${levelClass(entry, showMeta)} ${dim ? "dim" : ""} ${
-          activeMatchRow === index ? "search-active" : ""
-        }`}
+          customColor ? "keyword-colored" : ""
+        } ${activeMatchRow === index ? "search-active" : ""}`}
         style={rowStyle}
         title={entry.text}
       >

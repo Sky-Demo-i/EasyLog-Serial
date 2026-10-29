@@ -1401,6 +1401,17 @@ body.row-resizing * {
   color: #8ab4f8;
 }
 
+/* Keyword color wins over level color and is used exclusively. */
+.log-row.keyword-colored .col-msg {
+  color: var(--row-color);
+}
+
+.log-row.keyword-colored .col-lvl {
+  background: transparent;
+  border-color: transparent;
+  color: var(--row-color);
+}
+
 .log-empty {
   position: absolute;
   inset: 30px 0 0;

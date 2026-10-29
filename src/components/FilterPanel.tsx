@@ -113,7 +113,7 @@ export default function FilterPanel({
         <span className="filter-heading">
           过滤
           <span className={`filter-mode ${elogMode ? "elog" : "raw"}`}>
-            {elogMode ? "EasyLog" : "原生"}
+            {elogMode ? "EasyLog" : "原始"}
           </span>
         </span>
         <button
@@ -185,49 +185,52 @@ export default function FilterPanel({
       )}
 
       {!elogMode && (
-        <>
-          <div className="filter-raw-note">
-            原生 SSCOM 模式：级别 / Tag 不参与过滤，按下方关键字和颜色规则显示。
-          </div>
-          <div className="filter-section grow">
-            <div className="filter-title">
-              <span>关键字颜色</span>
-              <button className="link-btn" onClick={addColorRule}>
-                ＋ 添加
+        <div className="filter-raw-note">
+          原始模式：级别 / Tag 不参与过滤，按下方关键字和颜色规则原样显示。
+        </div>
+      )}
+
+      <div className="filter-section">
+        <div className="filter-title">
+          <span>关键字着色</span>
+          <button className="link-btn" onClick={addColorRule}>
+            ＋ 添加
+          </button>
+        </div>
+        <div className="color-rule-list">
+          {colorRules.length === 0 && (
+            <div className="filter-hint">
+              {elogMode
+                ? "添加关键字后整行使用该颜色，优先级高于级别颜色"
+                : "添加关键字后，命中的整行按颜色显示"}
+            </div>
+          )}
+          {colorRules.map((rule) => (
+            <div className="color-rule" key={rule.id}>
+              <input
+                type="color"
+                className="color-rule-swatch"
+                value={rule.color}
+                title="选择颜色"
+                onChange={(e) => updateColorRule(rule.id, { color: e.target.value })}
+              />
+              <input
+                className="color-rule-keyword"
+                value={rule.keyword}
+                placeholder="关键字，如 ERROR"
+                onChange={(e) => updateColorRule(rule.id, { keyword: e.target.value })}
+              />
+              <button
+                className="link-btn"
+                title="删除这条颜色规则"
+                onClick={() => removeColorRule(rule.id)}
+              >
+                ×
               </button>
             </div>
-            <div className="color-rule-list">
-              {colorRules.length === 0 && (
-                <div className="filter-hint">添加关键字后，命中的整行按颜色显示</div>
-              )}
-              {colorRules.map((rule) => (
-                <div className="color-rule" key={rule.id}>
-                  <input
-                    type="color"
-                    className="color-rule-swatch"
-                    value={rule.color}
-                    title="选择颜色"
-                    onChange={(e) => updateColorRule(rule.id, { color: e.target.value })}
-                  />
-                  <input
-                    className="color-rule-keyword"
-                    value={rule.keyword}
-                    placeholder="关键字，如 ERROR"
-                    onChange={(e) => updateColorRule(rule.id, { keyword: e.target.value })}
-                  />
-                  <button
-                    className="link-btn"
-                    title="删除这条颜色规则"
-                    onClick={() => removeColorRule(rule.id)}
-                  >
-                    ×
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-        </>
-      )}
+          ))}
+        </div>
+      </div>
 
       <div className="filter-section">
         <div className="filter-title">
