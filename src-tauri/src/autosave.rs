@@ -55,6 +55,8 @@ pub struct AutoSave {
     next_index: u64,
     max_bytes: u64,
     meta: Option<SessionMeta>,
+    session_stamp: String,
+    session_port: String,
 }
 
 impl AutoSave {
@@ -66,6 +68,8 @@ impl AutoSave {
             next_index: 1,
             max_bytes: DEFAULT_MAX_BYTES,
             meta: None,
+            session_stamp: String::new(),
+            session_port: String::new(),
         }
     }
 
@@ -91,8 +95,12 @@ impl AutoSave {
         if !self.enabled {
             return;
         }
+        let started = now_ms();
+        self.session_stamp = filename_stamp(started);
+        self.session_port = safe_port(port_name);
+        self.next_index = 1;
         self.meta = Some(SessionMeta {
-            started: now_ms(),
+            started,
             port: port_name.to_string(),
             baud: baud_rate,
         });
@@ -114,7 +122,7 @@ impl AutoSave {
     }
 
     pub fn info(&self) -> AutoSaveInfo {
-        let (files, bytes, _) = scan(&self.dir);
+        let (files, bytes) = scan(&self.dir);
         AutoSaveInfo {
             enabled: self.enabled,
             dir: self.dir.to_string_lossy().into_owned(),
@@ -183,17 +191,22 @@ impl AutoSave {
         }
         fs::create_dir_all(&self.dir).map_err(|e| format!("创建自动录制目录失败: {e}"))?;
 
-        let (_, _, max_index) = scan(&self.dir);
-        if self.next_index <= max_index {
-            self.next_index = max_index + 1;
-        }
+        let stamp = if self.session_stamp.is_empty() {
+            filename_stamp(now_ms())
+        } else {
+            self.session_stamp.clone()
+        };
+        let port = if self.session_port.is_empty() {
+            "port".to_string()
+        } else {
+            self.session_port.clone()
+        };
 
         loop {
-            let path = self
-                .dir
-                .join(format!("auto-{:06}.jsonl", self.next_index));
-            let text_path = self.dir.join(format!("auto-{:06}.log", self.next_index));
+            let base = format!("auto-{stamp}-{port}-{:04}", self.next_index);
             self.next_index += 1;
+            let path = self.dir.join(format!("{base}.jsonl"));
+            let text_path = self.dir.join(format!("{base}.log"));
             if path.exists() || text_path.exists() {
                 continue;
             }
@@ -251,9 +264,9 @@ impl AutoSave {
 
     fn cleanup(&mut self) -> Result<(), String> {
         let mut files = segments(&self.dir);
-        let mut total: u64 = files.iter().map(|(_, _, size)| *size).sum();
+        let mut total: u64 = files.iter().map(|(_, size)| *size).sum();
         while total > self.max_bytes && files.len() > 1 {
-            let (_, _, size) = files[0];
+            let (_, size) = files[0];
             if !remove_oldest(&mut files, self.current.as_ref()) {
                 break;
             }
@@ -263,16 +276,13 @@ impl AutoSave {
     }
 }
 
-fn remove_oldest(
-    files: &mut Vec<(u64, PathBuf, u64)>,
-    current: Option<&Segment>,
-) -> bool {
+fn remove_oldest(files: &mut Vec<(PathBuf, u64)>, current: Option<&Segment>) -> bool {
     if files.is_empty() {
         return false;
     }
-    let (_, path, _) = files.remove(0);
+    let (path, _) = files.remove(0);
     if current.map(|segment| segment.path == path).unwrap_or(false) {
-        files.insert(0, (0, path, 0));
+        files.insert(0, (path, 0));
         return false;
     }
     if let Err(error) = fs::remove_file(&path) {
@@ -296,43 +306,76 @@ pub fn app_dir() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("."))
 }
 
-pub fn autosave_dir() -> PathBuf {
-    app_dir().join("logs").join("auto")
+pub fn logs_dir() -> PathBuf {
+    app_dir().join("logs")
 }
 
-fn segments(dir: &Path) -> Vec<(u64, PathBuf, u64)> {
+pub fn autosave_dir() -> PathBuf {
+    logs_dir().join("auto")
+}
+
+fn segments(dir: &Path) -> Vec<(PathBuf, u64)> {
     let mut items = Vec::new();
     let Ok(entries) = fs::read_dir(dir) else {
         return items;
     };
     for entry in entries.flatten() {
         let path = entry.path();
-        let Some(index) = segment_index(&path) else {
+        let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
             continue;
         };
+        if !name.starts_with("auto-") || !name.ends_with(".jsonl") {
+            continue;
+        }
         let json_size = entry.metadata().map(|meta| meta.len()).unwrap_or(0);
         let text_size = fs::metadata(path.with_extension("log"))
             .map(|meta| meta.len())
             .unwrap_or(0);
-        items.push((index, path, json_size + text_size));
+        items.push((path, json_size + text_size));
     }
-    items.sort_by_key(|(index, _, _)| *index);
+    items.sort_by(|a, b| {
+        a.0.file_name()
+            .unwrap_or_default()
+            .cmp(b.0.file_name().unwrap_or_default())
+    });
     items
 }
 
-fn segment_index(path: &Path) -> Option<u64> {
-    let name = path.file_name()?.to_str()?;
-    name.strip_prefix("auto-")?
-        .strip_suffix(".jsonl")?
-        .parse::<u64>()
-        .ok()
+fn scan(dir: &Path) -> (usize, u64) {
+    let items = segments(dir);
+    let bytes = items.iter().map(|(_, size)| *size).sum();
+    (items.len(), bytes)
 }
 
-fn scan(dir: &Path) -> (usize, u64, u64) {
-    let items = segments(dir);
-    let bytes = items.iter().map(|(_, _, size)| *size).sum();
-    let max_index = items.iter().map(|(index, _, _)| *index).max().unwrap_or(0);
-    (items.len(), bytes, max_index)
+pub fn filename_stamp(ts: u64) -> String {
+    Local
+        .timestamp_millis_opt(ts as i64)
+        .single()
+        .map(|time| {
+            format!(
+                "{}-{:03}",
+                time.format("%Y%m%d-%H%M%S"),
+                time.timestamp_subsec_millis()
+            )
+        })
+        .unwrap_or_else(|| ts.to_string())
+}
+
+pub fn safe_port(port: &str) -> String {
+    let cleaned: String = port
+        .chars()
+        .filter(|ch| ch.is_ascii_alphanumeric() || *ch == '-' || *ch == '_')
+        .take(24)
+        .collect();
+    if cleaned.is_empty() {
+        "port".to_string()
+    } else {
+        cleaned
+    }
+}
+
+pub fn display_stamp(ts: u64) -> String {
+    format_ts(ts)
 }
 
 fn format_ts(ts: u64) -> String {

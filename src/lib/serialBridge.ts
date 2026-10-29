@@ -115,19 +115,23 @@ export async function setSignals(dtr: boolean, rts: boolean): Promise<void> {
 }
 
 export async function startRecording(
-  filename: string,
   portName: string,
   baudRate: number,
 ): Promise<string> {
-  if (!isTauri()) return `mock-sessions/${filename}`;
+  if (!isTauri()) return `mock-sessions/recording-${Date.now()}-${portName}.jsonl`;
   return invoke<string>("start_recording", {
-    config: { filename, portName, baudRate },
+    config: { portName, baudRate },
   });
 }
 
 export async function stopRecording(): Promise<string | null> {
   if (!isTauri()) return null;
   return invoke<string | null>("stop_recording");
+}
+
+export async function saveLogText(content: string, portName: string): Promise<string> {
+  if (!isTauri()) return "";
+  return invoke<string>("save_log_text", { content, portName });
 }
 
 const MOCK_AUTOSAVE: AutoSaveInfo = {

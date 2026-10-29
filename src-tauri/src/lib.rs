@@ -52,6 +52,15 @@ fn set_signals(
 }
 
 #[tauri::command]
+fn save_log_text(
+    state: tauri::State<'_, SerialManager>,
+    content: String,
+    port_name: String,
+) -> Result<String, String> {
+    state.save_log_text(&content, &port_name)
+}
+
+#[tauri::command]
 fn start_recording(
     state: tauri::State<'_, SerialManager>,
     config: RecordingConfig,
@@ -88,6 +97,7 @@ pub fn run() {
             close_port,
             write_port,
             set_signals,
+            save_log_text,
             start_recording,
             stop_recording,
             set_autosave,

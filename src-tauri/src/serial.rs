@@ -21,7 +21,7 @@
 
 use std::fs::{self, File};
 use std::io::{BufWriter, ErrorKind, Read, Write};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -83,7 +83,6 @@ fn default_flow() -> String {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RecordingConfig {
-    pub filename: String,
     pub port_name: String,
     pub baud_rate: u32,
 }
@@ -335,6 +334,23 @@ impl SerialManager {
             })
     }
 
+    pub fn save_log_text(&self, content: &str, port_name: &str) -> Result<String, String> {
+        let dir = crate::autosave::logs_dir();
+        fs::create_dir_all(&dir).map_err(|e| format!("创建保存目录失败: {e}"))?;
+        let now = now_ms();
+        let stamp = crate::autosave::filename_stamp(now);
+        let port = crate::autosave::safe_port(port_name);
+        let path = dir.join(format!("easylog-{stamp}-{port}.txt"));
+        let body = format!(
+            "# EasyLog Serial save {} · {}\r\n{}\r\n",
+            crate::autosave::display_stamp(now),
+            port,
+            content
+        );
+        fs::write(&path, body.as_bytes()).map_err(|e| format!("保存日志失败: {e}"))?;
+        Ok(path.to_string_lossy().into_owned())
+    }
+
     pub fn start_recording(&self, cfg: RecordingConfig) -> Result<String, String> {
         if self.port.lock().unwrap().is_none() {
             return Err("串口未打开，无法录制".into());
@@ -346,12 +362,9 @@ impl SerialManager {
         let dir = recording_dir();
         fs::create_dir_all(&dir).map_err(|e| format!("创建录制目录失败: {e}"))?;
 
-        let safe_name = Path::new(&cfg.filename)
-            .file_name()
-            .and_then(|name| name.to_str())
-            .filter(|name| !name.is_empty())
-            .unwrap_or("session.jsonl");
-        let path = dir.join(safe_name);
+        let stamp = crate::autosave::filename_stamp(now_ms());
+        let port = crate::autosave::safe_port(&cfg.port_name);
+        let path = dir.join(format!("recording-{stamp}-{port}.jsonl"));
 
         let file = File::create(&path).map_err(|e| format!("创建录制文件失败: {e}"))?;
         let mut writer = BufWriter::new(file);
@@ -396,14 +409,7 @@ fn record_chunk(recorder: &Arc<Mutex<Option<Recording>>>, kind: &str, ts: u64, b
 }
 
 fn recording_dir() -> PathBuf {
-    if let Some(profile) = std::env::var_os("USERPROFILE") {
-        PathBuf::from(profile)
-            .join("Documents")
-            .join("EasyLog")
-            .join("sessions")
-    } else {
-        PathBuf::from("sessions")
-    }
+    crate::autosave::logs_dir().join("recordings")
 }
 
 pub fn list_ports() -> Vec<PortInfo> {

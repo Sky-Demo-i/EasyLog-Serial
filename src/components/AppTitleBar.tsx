@@ -64,7 +64,7 @@ export default function AppTitleBar() {
         <span className="app-mark">EL</span>
         <span className="app-brand-name">EasyLog Serial</span>
         <span className="app-brand-sub">串口工作台</span>
-        <span className="app-author">lyg · v0.3.15</span>
+        <span className="app-author">lyg · v0.3.16</span>
       </div>
       <span className="app-titlebar-spacer" />
       <div className="window-controls">

@@ -1,8 +1,8 @@
 # EasyLog Serial
 
-EasyLogger 的配套串口工作台 · **lyg** · **v0.3.15**。Tauri 2 + React + Rust，Windows 10/11。
+EasyLogger 的配套串口工作台 · **lyg** · **v0.3.16**。Tauri 2 + React + Rust，Windows 10/11。
 
-![界面预览（默认浅色，多分类同时展开）](docs/ui-v0315.png)
+![界面预览（默认浅色，多分类同时展开）](docs/ui-v0316.png)
 
 ## 当前进度
 
@@ -24,7 +24,7 @@ EasyLogger 的配套串口工作台 · **lyg** · **v0.3.15**。Tauri 2 + React 
 | EasyLog 模式开关：关闭后按 SSCOM 原生方式只显示时间/方向/消息，不解析级别、不按级别着色 | ✅ |
 | 原生模式关键字着色：左侧隐藏级别/Tag，改用“关键字 + 颜色”规则，命中整行着色；切回 EasyLog 后恢复级别/Tag | ✅ |
 | 日志区查找：`Ctrl+F` 或“搜索”按钮，输入即高亮匹配，Enter / Shift+Enter 跳转，Esc 关闭 | ✅ |
-| 自动保存（独立功能）：同时写 JSONL（无损/可回放）和可读文本（时间戳 + RX/TX 文本），两者共用开关、分段和容量上限，保存在工具目录 `logs\auto`；上限 5/10/20/50/100MB 可选 | ✅ |
+| 自动保存（独立功能）：同时写 JSONL（无损/可回放）和可读文本（时间戳 + RX/TX 文本），两者共用开关、分段和容量上限；手动保存、录制、自动保存全在工具目录 `logs` 下，文件名带时间和串口 | ✅ |
 | 真实设备联调 | ✅ COM5 @ 115200：勾选“连接后发送 2”后日志开始输出（RX 10.5 KB / 122 行）；发送 `AT^GT_CM=VERSION` 返回 `[VERSION]EL802K_...` |
 
 ### 第二阶段：EasyLogger 专属
@@ -51,7 +51,8 @@ EasyLogger 的配套串口工作台 · **lyg** · **v0.3.15**。Tauri 2 + React 
 
 ### 录制与回放
 
-- 连接后点 **“● 录制”**，把原始 RX/TX 写入 `文档\EasyLog\sessions\easylog-*.jsonl`；断开或点“停止录制”时落盘
+- **保存按钮**：把当前日志写到工具目录 `logs\easylog-YYYYMMDD-HHMMSS-mmm-COM5.txt`，文件名和文件头都带保存时间与当前串口
+- 连接后点 **“● 录制”**，把原始 RX/TX 写入 `工具目录\logs\recordings\recording-YYYYMMDD-HHMMSS-mmm-COM5.jsonl`（文件名带时间和串口）；断开或点“停止录制”时落盘
 - 点 **“▶ 回放”** 选择会话文件，速度可选 `1x / 10x / 立即`
 - 文件是 JSON Lines：`{"type":"meta"...}` + 每条 `{"type":"rx"|"tx","ts":...,"data":"<base64>"}`，可直接用脚本分析
 - 回放会重建时间戳、方向、级别/Tag，并重新走一遍过滤与着色
@@ -96,13 +97,14 @@ EasyLogger 的配套串口工作台 · **lyg** · **v0.3.15**。Tauri 2 + React 
 
 - 默认开启，自动记录**接收 + 发送**；和手动“保存”、手动“录制”互不影响
 - 每次自动保存同时写两份，共用同一个开关和容量上限：
-  - `工具目录\logs\auto\auto-000001.jsonl`：无损 JSONL，`meta` + `rx`/`tx` + `ts` 毫秒时间戳 + base64，可直接用“回放”打开
-  - `工具目录\logs\auto\auto-000001.log`：可读文本，每行 `[2026-10-29 12:34:56.789] RX/TX 文本`，便于其他工具或人工直接查看
+  - `工具目录\logs\auto\auto-20261029-120420-361-COM5-0001.jsonl`：无损 JSONL，`meta` + `rx`/`tx` + `ts` 毫秒时间戳 + base64，可直接用“回放”打开
+  - `工具目录\logs\auto\auto-20261029-120420-361-COM5-0001.log`：可读文本，每行 `[2026-10-29 12:34:56.789] RX/TX 文本`
+- 文件名包含 **自动保存时间 + 串口号 + 分段序号**，不会只靠 `0001` 区分
 - 文本日志按 UTF-8 宽松解码；二进制/非文本内容仍以 JSONL 的 base64 为准
-- 分段成对写入（`auto-000001.jsonl` + `auto-000001.log`），每段 JSONL 约 1 MB；默认上限 10 MB，可选 `5/10/20/50/100MB`
+- 分段成对写入，每段 JSONL 约 1 MB；默认上限 10 MB，可选 `5/10/20/50/100MB`
 - 容量上限按两份文件合计计算，超过后成对删除最旧分段
 - 状态栏只显示“自动保存 / 自动保存 关”状态
-- 手动“保存”和“录制”仍然由用户自己触发，路径/行为不变
+- 手动“保存”和“录制”也都在 `logs` 下，各自生成带时间和串口的文件名
 
 ### 快捷指令多分类列表
 
@@ -158,7 +160,7 @@ AT+CSQ
 
 ## 直接运行（免安装）
 
-免安装绿色版：[`release/EasyLog-Serial-0.3.15-portable.zip`](release/EasyLog-Serial-0.3.15-portable.zip)（约 1.9 MB）
+免安装绿色版：[`release/EasyLog-Serial-0.3.16-portable.zip`](release/EasyLog-Serial-0.3.16-portable.zip)（约 2.0 MB）
 
 - 解压到任意文件夹，双击 `EasyLogSerial.exe` 即可
 - 按住自定义标题栏空白处可拖动整个窗口；四边/四角可缩放

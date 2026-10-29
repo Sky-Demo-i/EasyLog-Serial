@@ -1,7 +1,7 @@
 {
   "name": "easylog-serial",
   "private": true,
-  "version": "0.3.15",
+  "version": "0.3.16",
   "author": "lyg",
   "type": "module",
   "scripts": {

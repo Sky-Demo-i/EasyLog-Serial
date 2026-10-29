@@ -838,8 +838,7 @@ export default function App() {
     }
 
     try {
-      const filename = `easylog-${stamp()}.jsonl`;
-      const path = await bridge.startRecording(filename, config.portName, config.baudRate);
+      const path = await bridge.startRecording(config.portName, config.baudRate);
       setRecording(true);
       setRecordPath(path);
       setStatus(`录制中：${path}`);
@@ -882,7 +881,7 @@ export default function App() {
     }
   };
 
-  const saveLog = () => {
+  const saveLog = async () => {
     const text = storeRef.current.all
       .map((line) => `${options.timestamp ? `[${formatTime(line.ts)}] ` : ""}${line.text}`)
       .join("\r\n");
@@ -890,8 +889,18 @@ export default function App() {
       setStatus("没有可保存的内容");
       return;
     }
-    downloadText(`easylog-${stamp()}.txt`, text);
-    setStatus(`已保存 ${storeRef.current.all.length} 行`);
+    try {
+      if (bridge.isTauri()) {
+        const path = await bridge.saveLogText(text, config.portName);
+        setStatus(`已保存 ${storeRef.current.all.length} 行到 ${path}`);
+      } else {
+        const port = config.portName.replace(/[^A-Za-z0-9_-]/g, "") || "port";
+        downloadText(`easylog-${stamp()}-${port}.txt`, text);
+        setStatus(`已保存 ${storeRef.current.all.length} 行`);
+      }
+    } catch (error) {
+      setStatus(`保存失败：${normalizeError(error)}`);
+    }
   };
 
   const resolveCommandAppend = (command: QuickCommand): AppendMode =>
