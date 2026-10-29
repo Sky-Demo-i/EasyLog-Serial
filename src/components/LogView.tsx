@@ -1,4 +1,4 @@
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import type { DisplayOptions, KeywordColorRule, LogEntry } from "../types";
 import { formatTime } from "../lib/format";
@@ -84,6 +84,10 @@ export default function LogView({
   onAutoScrollChange,
 }: Props) {
   const viewportRef = useRef<HTMLDivElement>(null);
+  const followRafRef = useRef<number | null>(null);
+  const followTargetRef = useRef(0);
+  const autoScrollRef = useRef(options.autoScroll);
+  autoScrollRef.current = options.autoScroll;
   const [height, setHeight] = useState(0);
   const [scrollTop, setScrollTop] = useState(0);
   const fontSize = options.logFontSize || 13;
@@ -151,9 +155,54 @@ export default function LogView({
 
   useLayoutEffect(() => {
     const el = viewportRef.current;
-    if (!el || !options.autoScroll) return;
-    el.scrollTop = el.scrollHeight;
+    if (!el) return;
+    if (!options.autoScroll) {
+      if (followRafRef.current !== null) {
+        cancelAnimationFrame(followRafRef.current);
+        followRafRef.current = null;
+      }
+      return;
+    }
+
+    followTargetRef.current = Math.max(0, el.scrollHeight - el.clientHeight);
+    // A large backlog (replay/large burst) should catch up immediately; smooth
+    // follow is only for the usual few appended lines per frame.
+    if (followTargetRef.current - el.scrollTop > rowHeight * 8) {
+      el.scrollTop = followTargetRef.current;
+      return;
+    }
+    if (followRafRef.current !== null) return;
+
+    const tick = () => {
+      const viewport = viewportRef.current;
+      if (!viewport || !autoScrollRef.current) {
+        followRafRef.current = null;
+        return;
+      }
+      const target = followTargetRef.current;
+      const diff = target - viewport.scrollTop;
+      if (diff <= 0.5) {
+        viewport.scrollTop = target;
+        followRafRef.current = null;
+        return;
+      }
+      // Follow the tail in small, continuous steps instead of snapping the
+      // whole window by a full batch height.
+      const step = Math.min(48, Math.max(1, diff * 0.3));
+      viewport.scrollTop += step;
+      followRafRef.current = requestAnimationFrame(tick);
+    };
+    followRafRef.current = requestAnimationFrame(tick);
   }, [lines.length, partial, options.autoScroll, height, rowHeight]);
+
+  useEffect(() => {
+    return () => {
+      if (followRafRef.current !== null) {
+        cancelAnimationFrame(followRafRef.current);
+        followRafRef.current = null;
+      }
+    };
+  }, []);
 
   useLayoutEffect(() => {
     const el = viewportRef.current;
@@ -252,12 +301,18 @@ export default function LogView({
       className="log-viewport"
       ref={viewportRef}
       style={{ fontSize }}
+      onWheel={(event) => {
+        if (event.deltaY < 0 && options.autoScroll) onAutoScrollChange(false);
+      }}
       onScroll={(event) => {
         const el = event.currentTarget;
         setScrollTop(el.scrollTop);
         const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
-        if (distance > 48 && options.autoScroll) onAutoScrollChange(false);
-        else if (distance <= 2 && !options.autoScroll) onAutoScrollChange(true);
+        if (distance > 48 && options.autoScroll && followRafRef.current === null) {
+          onAutoScrollChange(false);
+        } else if (distance <= 2 && !options.autoScroll) {
+          onAutoScrollChange(true);
+        }
       }}
     >
       <div className="log-content" style={{ width: contentWidth }}>
