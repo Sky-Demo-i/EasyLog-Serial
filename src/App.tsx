@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import Toolbar from "./components/Toolbar";
 import AppTitleBar, { WindowResizeHandles } from "./components/AppTitleBar";
-import LogView from "./components/LogView";
+import LogView, { highlightText } from "./components/LogView";
 import LogHeader from "./components/LogHeader";
 import SendPane from "./components/SendPane";
 import QuickCommands from "./components/QuickCommands";
@@ -312,6 +312,14 @@ export default function App() {
   const jumpToMatch = (matchIndex: number) => {
     setActiveMatch(matchIndex);
     setSearchToken((value) => value + 1);
+  };
+
+  const includesSearch = (text: string) => {
+    const needle = searchTerm.trim();
+    if (!needle || !text) return false;
+    return searchCaseSensitive
+      ? text.includes(needle)
+      : text.toLowerCase().includes(needle.toLowerCase());
   };
 
   const scheduleRender = useCallback(() => {
@@ -1251,7 +1259,39 @@ export default function App() {
                             <span className="search-result-dir">
                               {entry.dir === "tx" ? "发→" : entry.dir === "rx" ? "收←" : "·"}
                             </span>
-                            <span className="search-result-msg">{entry.message}</span>
+                            <span className="search-result-msg">
+                              {includesSearch(entry.message) ? (
+                                highlightText(
+                                  entry.message,
+                                  searchTerm,
+                                  searchCaseSensitive,
+                                )
+                              ) : includesSearch(entry.func) ? (
+                                <>
+                                  <span className="search-result-context">
+                                    {highlightText(
+                                      entry.func,
+                                      searchTerm,
+                                      searchCaseSensitive,
+                                    )}
+                                  </span>
+                                  <span className="search-result-sep"> · </span>
+                                  {entry.message}
+                                </>
+                              ) : (
+                                <>
+                                  <span className="search-result-context">
+                                    {highlightText(
+                                      entry.tag,
+                                      searchTerm,
+                                      searchCaseSensitive,
+                                    )}
+                                  </span>
+                                  <span className="search-result-sep"> · </span>
+                                  {entry.message}
+                                </>
+                              )}
+                            </span>
                           </button>
                         );
                       })

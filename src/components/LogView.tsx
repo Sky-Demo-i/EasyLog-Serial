@@ -31,7 +31,7 @@ interface Props {
   onAutoScrollChange: (value: boolean) => void;
 }
 
-function highlightText(text: string, search: string, caseSensitive: boolean): ReactNode {
+export function highlightText(text: string, search: string, caseSensitive: boolean): ReactNode {
   const needle = search.trim();
   if (!needle || !text) return text;
   const lower = caseSensitive ? text : text.toLowerCase();
