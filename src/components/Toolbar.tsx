@@ -17,6 +17,10 @@ interface Props {
   config: SerialConfig;
   connected: boolean;
   busy: boolean;
+  transport: "serial" | "tcp";
+  tcpPort: number;
+  tcpHost: string;
+  tcpClients: number;
   encoding: Encoding;
   connectOptions: ConnectOptions;
   theme: ThemeMode;
@@ -24,6 +28,9 @@ interface Props {
   showQuick: boolean;
   onConfigChange: (patch: Partial<SerialConfig>) => void;
   onConnectOptionsChange: (patch: Partial<ConnectOptions>) => void;
+  onTransportChange: (transport: "serial" | "tcp") => void;
+  onTcpPortChange: (port: number) => void;
+  onTcpHostChange: (host: string) => void;
   onEncodingChange: (encoding: Encoding) => void;
   onThemeChange: (theme: ThemeMode) => void;
   onToggleFilter: () => void;
@@ -38,6 +45,10 @@ export default function Toolbar({
   config,
   connected,
   busy,
+  transport,
+  tcpPort,
+  tcpHost,
+  tcpClients,
   encoding,
   connectOptions,
   theme,
@@ -45,6 +56,9 @@ export default function Toolbar({
   showQuick,
   onConfigChange,
   onConnectOptionsChange,
+  onTransportChange,
+  onTcpPortChange,
+  onTcpHostChange,
   onEncodingChange,
   onThemeChange,
   onToggleFilter,
@@ -82,6 +96,27 @@ export default function Toolbar({
   return (
     <div className="toolbar">
       <div className="group toolbar-primary">
+        <div className="transport-switch" role="group" aria-label="连接方式">
+          <button
+            type="button"
+            className={transport === "serial" ? "active" : ""}
+            disabled={lock}
+            onClick={() => onTransportChange("serial")}
+          >
+            串口
+          </button>
+          <button
+            type="button"
+            className={transport === "tcp" ? "active" : ""}
+            disabled={lock}
+            onClick={() => onTransportChange("tcp")}
+          >
+            TCP Server
+          </button>
+        </div>
+
+        {transport === "serial" ? (
+          <>
         <label className="field port-field">
           <span>串口</span>
           <select
@@ -262,6 +297,48 @@ export default function Toolbar({
           title="支持 \r \n \t \xNN 转义"
           onChange={(e) => onConnectOptionsChange({ wakeText: e.target.value })}
         />
+          </>
+        ) : (
+          <>
+            <label className="field tcp-host-field">
+              <span>本机IP</span>
+              <input
+                value={tcpHost}
+                disabled={lock}
+                placeholder="172.26.137.19"
+                title="填写本机局域网 IP，TCP 客户端用它连接"
+                onChange={(e) => onTcpHostChange(e.target.value)}
+              />
+            </label>
+            <label className="field tcp-port-field">
+              <span>监听端口</span>
+              <input
+                type="number"
+                min={1}
+                max={65535}
+                value={tcpPort}
+                disabled={lock}
+                onChange={(e) => {
+                  const value = Number(e.target.value);
+                  if (Number.isInteger(value) && value > 0 && value < 65536) {
+                    onTcpPortChange(value);
+                  }
+                }}
+              />
+            </label>
+            <button
+              className={`connect-btn ${connected ? "on" : ""}`}
+              onClick={connect}
+              disabled={busy || (!connected && !tcpHost.trim())}
+            >
+              {busy ? "处理中…" : connected ? "停止" : "启动"}
+            </button>
+            <span className="tcp-clients" title="当前 TCP 客户端连接">
+              客户端 {tcpClients}
+            </span>
+            <span className="tcp-hint">单端口监听 · 异常断开自动等重连</span>
+          </>
+        )}
       </div>
 
       <div className="group toolbar-secondary">

@@ -3,6 +3,8 @@ import type { AutoSaveInfo } from "../types";
 
 interface Props {
   connected: boolean;
+  transport: "serial" | "tcp";
+  tcpClients: number;
   portName: string;
   baudRate: number;
   rx: number;
@@ -22,6 +24,8 @@ interface Props {
 
 export default function StatusBar({
   connected,
+  transport,
+  tcpClients,
   portName,
   baudRate,
   rx,
@@ -48,7 +52,15 @@ export default function StatusBar({
     <div className="status-bar">
       <span className={`dot ${connected ? "on" : ""}`} />
       <span className="status-port">
-        {connected ? `${portName} @ ${baudRate}` : "未连接"}
+        {connected
+          ? transport === "tcp"
+            ? `TCP Server ${portName} · ${
+                tcpClients > 0 ? `客户端 ${tcpClients}` : "等待客户端"
+              }`
+            : `${portName} @ ${baudRate}`
+          : transport === "tcp"
+            ? "TCP 未启动"
+            : "未连接"}
       </span>
       <span className="sep">|</span>
       <span>RX {formatBytes(rx)}</span>
@@ -82,7 +94,7 @@ export default function StatusBar({
         {status}
       </span>
       <span className="app-meta" title="作者 · 版本">
-        lyg · v0.3.18
+        lyg · v0.3.19
       </span>
     </div>
   );

@@ -74,6 +74,42 @@ fn stop_recording(state: tauri::State<'_, SerialManager>) -> Option<String> {
 }
 
 #[tauri::command]
+fn start_tcp_server(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, SerialManager>,
+    host: String,
+    port: u16,
+) -> Result<(), String> {
+    state.start_tcp(app, &host, port)
+}
+
+#[tauri::command]
+fn local_ip() -> String {
+    serial::local_ip()
+}
+
+#[tauri::command]
+fn stop_tcp_server(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, SerialManager>,
+) -> Result<(), String> {
+    state.stop_tcp();
+    let _ = app.emit(
+        serial::EV_STATE,
+        serial::StatePayload {
+            connected: false,
+            message: "TCP Server 已停止".into(),
+        },
+    );
+    Ok(())
+}
+
+#[tauri::command]
+fn tcp_write_port(state: tauri::State<'_, SerialManager>, data: String) -> Result<usize, String> {
+    state.tcp_write_base64(&data)
+}
+
+#[tauri::command]
 fn set_autosave(
     state: tauri::State<'_, SerialManager>,
     enabled: bool,
@@ -100,6 +136,10 @@ pub fn run() {
             save_log_text,
             start_recording,
             stop_recording,
+            start_tcp_server,
+            stop_tcp_server,
+            tcp_write_port,
+            local_ip,
             set_autosave,
             autosave_info
         ])

@@ -19,8 +19,10 @@
 //!   {"type":"rx","ts":...,"data":"<base64>"}
 //!   {"type":"tx","ts":...,"data":"<base64>"}
 
+use std::collections::HashMap;
 use std::fs::{self, File};
 use std::io::{BufWriter, ErrorKind, Read, Write};
+use std::net::{IpAddr, Shutdown, TcpListener, TcpStream, UdpSocket};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -35,6 +37,7 @@ use crate::autosave::{AutoSave, AutoSaveInfo};
 
 pub const EV_DATA: &str = "serial://data";
 pub const EV_STATE: &str = "serial://state";
+pub const EV_TCP_CLIENTS: &str = "tcp://clients";
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -102,6 +105,19 @@ pub struct StatePayload {
     pub message: String,
 }
 
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TcpClientsPayload {
+    pub count: usize,
+    pub clients: Vec<String>,
+}
+
+struct TcpServer {
+    running: Arc<AtomicBool>,
+    clients: Arc<Mutex<HashMap<u64, TcpStream>>>,
+    accept: Mutex<Option<thread::JoinHandle<()>>>,
+}
+
 struct Recording {
     file: BufWriter<File>,
     path: PathBuf,
@@ -113,6 +129,7 @@ pub struct SerialManager {
     reader: Mutex<Option<thread::JoinHandle<()>>>,
     recorder: Arc<Mutex<Option<Recording>>>,
     autosave: Arc<Mutex<AutoSave>>,
+    tcp: Mutex<Option<TcpServer>>,
 }
 
 impl SerialManager {
@@ -123,6 +140,7 @@ impl SerialManager {
             reader: Mutex::new(None),
             recorder: Arc::new(Mutex::new(None)),
             autosave: Arc::new(Mutex::new(AutoSave::new())),
+            tcp: Mutex::new(None),
         }
     }
 
@@ -139,6 +157,7 @@ impl SerialManager {
         if let Some(port) = self.port.lock().unwrap().take() {
             drop(port);
         }
+        self.stop_tcp();
     }
 
     pub fn open(&self, app: AppHandle, cfg: SerialConfig) -> Result<(), String> {
@@ -274,6 +293,197 @@ impl SerialManager {
         Ok(())
     }
 
+    pub fn start_tcp(&self, app: AppHandle, host: &str, port: u16) -> Result<(), String> {
+        if port == 0 {
+            return Err("监听端口不能为 0".into());
+        }
+        let bind_ip: IpAddr = host
+            .trim()
+            .parse()
+            .map_err(|_| format!("本机 IP 格式不正确: {host}"))?;
+        self.stop();
+
+        let listener = TcpListener::bind((bind_ip, port))
+            .map_err(|e| format!("监听 {bind_ip}:{port} 失败: {e}"))?;
+        listener
+            .set_nonblocking(true)
+            .map_err(|e| format!("设置监听非阻塞失败: {e}"))?;
+
+        let running = Arc::new(AtomicBool::new(true));
+        let clients: Arc<Mutex<HashMap<u64, TcpStream>>> =
+            Arc::new(Mutex::new(HashMap::new()));
+        let recorder = Arc::clone(&self.recorder);
+        let autosave = Arc::clone(&self.autosave);
+        let app_handle = app.clone();
+        let accept_running = Arc::clone(&running);
+        let accept_clients = Arc::clone(&clients);
+
+        if let Ok(mut writer) = self.autosave.lock() {
+            writer.start_session(&format!("TCP{port}"), 0);
+        }
+
+        let accept_handle = thread::spawn(move || {
+            let mut next_id: u64 = 1;
+            while accept_running.load(Ordering::SeqCst) {
+                match listener.accept() {
+                    Ok((stream, _peer)) => {
+                        let _ = stream.set_nodelay(true);
+                        let read_stream = match stream.try_clone() {
+                            Ok(value) => value,
+                            Err(error) => {
+                                eprintln!("tcp: clone client stream failed: {error}");
+                                continue;
+                            }
+                        };
+                        let id = next_id;
+                        next_id += 1;
+                        let accepted = if let Ok(mut map) = accept_clients.lock() {
+                            if map.is_empty() {
+                                map.insert(id, stream);
+                                true
+                            } else {
+                                false
+                            }
+                        } else {
+                            false
+                        };
+                        if !accepted {
+                            // Single-client server, like SSCOM. Keep listening.
+                            let _ = read_stream.shutdown(Shutdown::Both);
+                            continue;
+                        }
+                        emit_tcp_clients(&app_handle, &accept_clients);
+                        let _ = app_handle.emit(
+                            EV_STATE,
+                            StatePayload {
+                                connected: true,
+                                message: "TCP 客户端已连接".into(),
+                            },
+                        );
+
+                        let client_app = app_handle.clone();
+                        let client_running = Arc::clone(&accept_running);
+                        let client_clients = Arc::clone(&accept_clients);
+                        let client_recorder = Arc::clone(&recorder);
+                        let client_autosave = Arc::clone(&autosave);
+                        let client_running_after = Arc::clone(&client_running);
+                        thread::spawn(move || {
+                            tcp_client_loop(
+                                read_stream,
+                                id,
+                                client_app.clone(),
+                                client_running,
+                                client_recorder,
+                                client_autosave,
+                            );
+                            if let Ok(mut map) = client_clients.lock() {
+                                map.remove(&id);
+                            }
+                            emit_tcp_clients(&client_app, &client_clients);
+                            if client_running_after.load(Ordering::SeqCst) {
+                                let _ = client_app.emit(
+                                    EV_STATE,
+                                    StatePayload {
+                                        connected: true,
+                                        message: "TCP 客户端已断开，继续监听等待重连".into(),
+                                    },
+                                );
+                            }
+                        });
+                    }
+                    Err(ref error) if error.kind() == ErrorKind::WouldBlock => {
+                        thread::sleep(Duration::from_millis(25));
+                    }
+                    Err(error) => {
+                        let _ = app_handle.emit(
+                            EV_STATE,
+                            StatePayload {
+                                connected: false,
+                                message: format!("TCP 监听失败: {error}"),
+                            },
+                        );
+                        break;
+                    }
+                }
+            }
+            if let Ok(map) = accept_clients.lock() {
+                for stream in map.values() {
+                    let _ = stream.shutdown(Shutdown::Both);
+                }
+            }
+        });
+
+        *self.tcp.lock().unwrap() = Some(TcpServer {
+            running,
+            clients: Arc::clone(&clients),
+            accept: Mutex::new(Some(accept_handle)),
+        });
+
+        emit_tcp_clients(&app, &clients);
+        let _ = app.emit(
+            EV_STATE,
+            StatePayload {
+                connected: true,
+                message: format!("TCP Server 监听 {bind_ip}:{port}"),
+            },
+        );
+        Ok(())
+    }
+
+    pub fn stop_tcp(&self) {
+        let Some(server) = self.tcp.lock().unwrap().take() else {
+            return;
+        };
+        server.running.store(false, Ordering::SeqCst);
+        if let Ok(clients) = server.clients.lock() {
+            for stream in clients.values() {
+                let _ = stream.shutdown(Shutdown::Both);
+            }
+        }
+        if let Some(handle) = server.accept.lock().unwrap().take() {
+            let _ = handle.join();
+        }
+        self.stop_recording();
+        if let Ok(mut writer) = self.autosave.lock() {
+            writer.flush();
+        }
+    }
+
+    pub fn tcp_write_base64(&self, data: &str) -> Result<usize, String> {
+        let bytes = B64.decode(data).map_err(|e| format!("数据解码失败: {e}"))?;
+        let clients = {
+            let guard = self.tcp.lock().unwrap();
+            let server = guard
+                .as_ref()
+                .ok_or_else(|| "TCP Server 未启动".to_string())?;
+            let guard = server.clients.lock().unwrap();
+            if guard.is_empty() {
+                return Err("没有 TCP 客户端连接".into());
+            }
+            guard
+                .iter()
+                .filter_map(|(id, stream)| stream.try_clone().ok().map(|clone| (*id, clone)))
+                .collect::<Vec<_>>()
+        };
+
+        let mut sent = 0usize;
+        for (_, mut stream) in clients {
+            if stream.write_all(&bytes).is_ok() {
+                sent += 1;
+            }
+        }
+        if sent == 0 {
+            return Err("TCP 客户端连接已断开".into());
+        }
+
+        let ts = now_ms();
+        record_chunk(&self.recorder, "tx", ts, &bytes);
+        if let Ok(mut writer) = self.autosave.lock() {
+            writer.append_tx(ts, &bytes);
+        }
+        Ok(bytes.len())
+    }
+
     pub fn close(&self) {
         self.stop();
     }
@@ -352,8 +562,10 @@ impl SerialManager {
     }
 
     pub fn start_recording(&self, cfg: RecordingConfig) -> Result<String, String> {
-        if self.port.lock().unwrap().is_none() {
-            return Err("串口未打开，无法录制".into());
+        let serial_active = self.port.lock().unwrap().is_some();
+        let tcp_active = self.tcp.lock().unwrap().is_some();
+        if !serial_active && !tcp_active {
+            return Err("串口/TCP Server 未启动，无法录制".into());
         }
 
         // Close any previous session before starting a new one.
@@ -396,6 +608,67 @@ impl SerialManager {
     }
 }
 
+fn tcp_client_loop(
+    mut stream: TcpStream,
+    _id: u64,
+    app: AppHandle,
+    running: Arc<AtomicBool>,
+    recorder: Arc<Mutex<Option<Recording>>>,
+    autosave: Arc<Mutex<AutoSave>>,
+) {
+    let _ = stream.set_read_timeout(Some(Duration::from_millis(120)));
+    let mut buf = [0u8; 8192];
+    let mut total: u64 = 0;
+
+    while running.load(Ordering::SeqCst) {
+        match stream.read(&mut buf) {
+            Ok(0) => break,
+            Ok(n) => {
+                total += n as u64;
+                let ts = now_ms();
+                let encoded = B64.encode(&buf[..n]);
+                let _ = app.emit(
+                    EV_DATA,
+                    DataPayload {
+                        ts,
+                        data: encoded,
+                        rx_total: total,
+                    },
+                );
+                record_chunk(&recorder, "rx", ts, &buf[..n]);
+                if let Ok(mut writer) = autosave.lock() {
+                    writer.append_rx(ts, &buf[..n]);
+                }
+            }
+            Err(ref error)
+                if error.kind() == ErrorKind::WouldBlock
+                    || error.kind() == ErrorKind::TimedOut =>
+            {
+                continue;
+            }
+            Err(_) => break,
+        }
+    }
+}
+
+fn emit_tcp_clients(app: &AppHandle, clients: &Arc<Mutex<HashMap<u64, TcpStream>>>) {
+    let clients = clients
+        .lock()
+        .map(|map| {
+            map.values()
+                .filter_map(|stream| stream.peer_addr().ok().map(|addr| addr.to_string()))
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let _ = app.emit(
+        EV_TCP_CLIENTS,
+        TcpClientsPayload {
+            count: clients.len(),
+            clients,
+        },
+    );
+}
+
 fn record_chunk(recorder: &Arc<Mutex<Option<Recording>>>, kind: &str, ts: u64, bytes: &[u8]) {
     if let Ok(mut guard) = recorder.lock() {
         if let Some(recording) = guard.as_mut() {
@@ -410,6 +683,16 @@ fn record_chunk(recorder: &Arc<Mutex<Option<Recording>>>, kind: &str, ts: u64, b
 
 fn recording_dir() -> PathBuf {
     crate::autosave::logs_dir().join("recordings")
+}
+
+pub fn local_ip() -> String {
+    UdpSocket::bind("0.0.0.0:0")
+        .and_then(|socket| {
+            socket.connect("8.8.8.8:80")?;
+            socket.local_addr()
+        })
+        .map(|addr| addr.ip().to_string())
+        .unwrap_or_else(|_| "127.0.0.1".into())
 }
 
 pub fn list_ports() -> Vec<PortInfo> {

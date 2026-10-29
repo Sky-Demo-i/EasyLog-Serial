@@ -134,6 +134,38 @@ export async function saveLogText(content: string, portName: string): Promise<st
   return invoke<string>("save_log_text", { content, portName });
 }
 
+export interface TcpClientsPayload {
+  count: number;
+  clients: string[];
+}
+
+export async function startTcpServer(host: string, port: number): Promise<void> {
+  if (!isTauri()) return;
+  await invoke("start_tcp_server", { host, port });
+}
+
+export async function localIp(): Promise<string> {
+  if (!isTauri()) return "127.0.0.1";
+  return invoke<string>("local_ip");
+}
+
+export async function stopTcpServer(): Promise<void> {
+  if (!isTauri()) return;
+  await invoke("stop_tcp_server");
+}
+
+export async function writeTcp(data: string): Promise<number> {
+  if (!isTauri()) return 0;
+  return invoke<number>("tcp_write_port", { data });
+}
+
+export async function onTcpClients(
+  cb: (payload: TcpClientsPayload) => void,
+): Promise<() => void> {
+  if (!isTauri()) return () => {};
+  return listen<TcpClientsPayload>("tcp://clients", (event) => cb(event.payload));
+}
+
 const MOCK_AUTOSAVE: AutoSaveInfo = {
   enabled: true,
   dir: "（浏览器模拟）logs/auto",

@@ -107,6 +107,9 @@ function loadOptions(): DisplayOptions {
     // EasyLog and 原始 are mutually exclusive. EasyLog parses/cleans ANSI;
     // 原始 keeps the stream untouched.
     merged.ansiRaw = !merged.elogMode;
+    if (localStorage.getItem("easylog.transport.v1") === "tcp") {
+      merged.timestamp = false;
+    }
     return merged;
   } catch {
     return { ...DEFAULT_OPTIONS };
@@ -241,6 +244,18 @@ export default function App() {
   const [activeMatch, setActiveMatch] = useState(0);
   const [searchToken, setSearchToken] = useState(0);
 
+  const [transport, setTransport] = useState<"serial" | "tcp">(() =>
+    localStorage.getItem("easylog.transport.v1") === "tcp" ? "tcp" : "serial",
+  );
+  const [tcpPort, setTcpPort] = useState(() => {
+    const saved = Number(localStorage.getItem("easylog.tcpPort.v1"));
+    return Number.isInteger(saved) && saved > 0 && saved < 65536 ? saved : 9000;
+  });
+  const [tcpHost, setTcpHost] = useState(
+    () => localStorage.getItem("easylog.tcpHost.v1") || "",
+  );
+  const [tcpClients, setTcpClients] = useState<string[]>([]);
+
   const [version, bump] = useReducer((x: number) => x + 1, 0);
 
   const storeRef = useRef(new LineStore());
@@ -261,6 +276,9 @@ export default function App() {
   const connectOptionsRef = useRef(connectOptions);
   const pausedRef = useRef(paused);
   const connectedRef = useRef(connected);
+  const transportRef = useRef(transport);
+  const tcpPortRef = useRef(tcpPort);
+  const serialTimestampRef = useRef(options.timestamp);
   const statsRef = useRef(stats);
   const sendParamsRef = useRef({ text: sendText, hex: sendHex, append });
 
@@ -268,6 +286,8 @@ export default function App() {
   connectOptionsRef.current = connectOptions;
   pausedRef.current = paused;
   connectedRef.current = connected;
+  transportRef.current = transport;
+  tcpPortRef.current = tcpPort;
   statsRef.current = stats;
   sendParamsRef.current = { text: sendText, hex: sendHex, append };
 
@@ -559,22 +579,31 @@ export default function App() {
     let disposed = false;
     let offData: (() => void) | undefined;
     let offState: (() => void) | undefined;
+    let offTcpClients: (() => void) | undefined;
     void (async () => {
       offData = await bridge.onSerialData(handleData);
       offState = await bridge.onSerialState((payload) => {
         setConnected(payload.connected);
         setStatus(payload.message);
-        if (!payload.connected) setRecording(false);
+        if (!payload.connected) {
+          setRecording(false);
+          setTcpClients([]);
+        }
+      });
+      offTcpClients = await bridge.onTcpClients((payload) => {
+        setTcpClients(payload.clients);
       });
       if (disposed) {
         offData?.();
         offState?.();
+        offTcpClients?.();
       }
     })();
     return () => {
       disposed = true;
       offData?.();
       offState?.();
+      offTcpClients?.();
     };
   }, [handleData]);
 
@@ -649,6 +678,28 @@ export default function App() {
     localStorage.setItem(CONNECT_KEY, JSON.stringify(connectOptions));
   }, [connectOptions]);
   useEffect(() => {
+    localStorage.setItem("easylog.transport.v1", transport);
+  }, [transport]);
+  useEffect(() => {
+    localStorage.setItem("easylog.tcpPort.v1", String(tcpPort));
+  }, [tcpPort]);
+  useEffect(() => {
+    localStorage.setItem("easylog.tcpHost.v1", tcpHost);
+  }, [tcpHost]);
+  useEffect(() => {
+    if (tcpHost) return;
+    let alive = true;
+    void bridge
+      .localIp()
+      .then((ip) => {
+        if (alive) setTcpHost((prev) => prev || ip);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [tcpHost]);
+  useEffect(() => {
     localStorage.setItem(CMDS_KEY, JSON.stringify(commands));
   }, [commands]);
   useEffect(() => {
@@ -680,9 +731,9 @@ export default function App() {
 
   // Keep DTR/RTS in sync when toggled while connected.
   useEffect(() => {
-    if (!connected) return;
+    if (!connected || transport !== "serial") return;
     void bridge.setSignals(config.dtr, config.rts).catch((error) => setStatus(normalizeError(error)));
-  }, [config.dtr, config.rts, connected]);
+  }, [config.dtr, config.rts, connected, transport]);
 
   // Cleanup pending timers and the recording file on unmount.
   useEffect(() => {
@@ -697,7 +748,7 @@ export default function App() {
   const doSend = useCallback(
     async (text: string, hex: boolean, appendMode: AppendMode): Promise<boolean> => {
       if (!connectedRef.current) {
-        setStatus("串口未打开");
+        setStatus(transportRef.current === "tcp" ? "TCP Server 未启动" : "串口未打开");
         return false;
       }
       let payload: Uint8Array;
@@ -736,7 +787,11 @@ export default function App() {
       }
 
       try {
-        await bridge.writePort(bytesToBase64(payload));
+        if (transportRef.current === "tcp") {
+          await bridge.writeTcp(bytesToBase64(payload));
+        } else {
+          await bridge.writePort(bytesToBase64(payload));
+        }
         setStats((prev) => ({ ...prev, tx: prev.tx + payload.length }));
         return true;
       } catch (error) {
@@ -761,6 +816,30 @@ export default function App() {
   }, [autoSend, connected, autoInterval, doSend]);
 
   const handleConnect = async () => {
+    if (transport === "tcp") {
+      setBusy(true);
+      stopReplay(true);
+      try {
+        storeRef.current.clear();
+        resetStream();
+        setStats({ rx: 0, tx: 0 });
+        setRecording(false);
+        setRecordPath("");
+        setReplayName("");
+        setTcpClients([]);
+        bump();
+        await bridge.startTcpServer(tcpHost || "127.0.0.1", tcpPort);
+        setConnected(true);
+        setStatus(`TCP Server 监听 ${tcpHost}:${tcpPort}，等待客户端连接`);
+      } catch (error) {
+        setStatus(`启动 TCP Server 失败：${normalizeError(error)}`);
+        setConnected(false);
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
+
     if (!config.portName) {
       setStatus("请选择串口");
       return;
@@ -822,6 +901,22 @@ export default function App() {
   };
 
   const handleDisconnect = async () => {
+    if (transport === "tcp") {
+      setBusy(true);
+      try {
+        await bridge.stopTcpServer();
+        setStatus("TCP Server 已停止");
+      } catch (error) {
+        setStatus(normalizeError(error));
+      } finally {
+        setBusy(false);
+        setConnected(false);
+        setRecording(false);
+        setTcpClients([]);
+      }
+      return;
+    }
+
     setBusy(true);
     try {
       await bridge.closePort();
@@ -847,12 +942,14 @@ export default function App() {
     }
 
     if (!connected) {
-      setStatus("请先连接串口");
+      setStatus(transport === "tcp" ? "请先启动 TCP Server" : "请先连接串口");
       return;
     }
 
     try {
-      const path = await bridge.startRecording(config.portName, config.baudRate);
+      const activePort = transport === "tcp" ? `TCP${tcpPort}` : config.portName;
+      const baudRate = transport === "tcp" ? 0 : config.baudRate;
+      const path = await bridge.startRecording(activePort, baudRate);
       setRecording(true);
       setRecordPath(path);
       setStatus(`录制中：${path}`);
@@ -904,11 +1001,12 @@ export default function App() {
       return;
     }
     try {
+      const activePort = transport === "tcp" ? `TCP${tcpPort}` : config.portName;
       if (bridge.isTauri()) {
-        const path = await bridge.saveLogText(text, config.portName);
+        const path = await bridge.saveLogText(text, activePort);
         setStatus(`已保存 ${storeRef.current.all.length} 行到 ${path}`);
       } else {
-        const port = config.portName.replace(/[^A-Za-z0-9_-]/g, "") || "port";
+        const port = activePort.replace(/[^A-Za-z0-9_-]/g, "") || "port";
         downloadText(`easylog-${stamp()}-${port}.txt`, text);
         setStatus(`已保存 ${storeRef.current.all.length} 行`);
       }
@@ -951,6 +1049,18 @@ export default function App() {
     setStatus(`已导出 ${commands.length} 条指令`);
   };
 
+  function switchTransport(next: "serial" | "tcp") {
+    if (connected || next === transport) return;
+    if (next === "tcp") {
+      serialTimestampRef.current = options.timestamp;
+      setOption("timestamp", false);
+    } else {
+      setOption("timestamp", serialTimestampRef.current);
+    }
+    setTransport(next);
+    setTcpClients([]);
+  }
+
   function setDisplayMode(elogMode: boolean) {
     if (options.elogMode === elogMode) return;
     setOptions((prev) => ({ ...prev, elogMode, ansiRaw: !elogMode }));
@@ -972,6 +1082,10 @@ export default function App() {
         config={config}
         connected={connected}
         busy={busy}
+        transport={transport}
+        tcpPort={tcpPort}
+        tcpHost={tcpHost}
+        tcpClients={tcpClients.length}
         encoding={options.encoding}
         connectOptions={connectOptions}
         theme={options.theme}
@@ -988,6 +1102,9 @@ export default function App() {
           bump();
         }}
         onThemeChange={(theme) => setOption("theme", theme)}
+        onTransportChange={switchTransport}
+        onTcpPortChange={setTcpPort}
+        onTcpHostChange={setTcpHost}
         onToggleFilter={() => setOption("showFilter", !options.showFilter)}
         onToggleQuick={() => setOption("showQuick", !options.showQuick)}
         onConnect={handleConnect}
@@ -1396,7 +1513,9 @@ export default function App() {
 
       <StatusBar
         connected={connected}
-        portName={config.portName}
+        transport={transport}
+        tcpClients={tcpClients.length}
+        portName={transport === "tcp" ? `${tcpHost}:${tcpPort}` : config.portName}
         baudRate={config.baudRate}
         rx={stats.rx}
         tx={stats.tx}
