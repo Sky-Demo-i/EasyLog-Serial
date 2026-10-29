@@ -1074,6 +1074,18 @@ body.row-resizing * {
   font-weight: 500;
 }
 
+.log-viewport:focus {
+  outline: none;
+}
+
+.log-viewport.log-select-all {
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.log-viewport.log-select-all .log-row {
+  background: rgba(52, 87, 200, 0.12);
+}
+
 .log-content {
   position: relative;
   min-width: 100%;

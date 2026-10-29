@@ -28,6 +28,7 @@ interface Props {
   searchCaseSensitive: boolean;
   activeMatchRow: number | null;
   scrollToken: number;
+  selectAll: boolean;
   onAutoScrollChange: (value: boolean) => void;
 }
 
@@ -81,6 +82,7 @@ export default function LogView({
   searchCaseSensitive,
   activeMatchRow,
   scrollToken,
+  selectAll,
   onAutoScrollChange,
 }: Props) {
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -249,8 +251,9 @@ export default function LogView({
 
   return (
     <div
-      className="log-viewport"
+      className={`log-viewport ${selectAll ? "log-select-all" : ""}`}
       ref={viewportRef}
+      tabIndex={0}
       style={{ fontSize }}
       onWheel={(event) => {
         if (event.deltaY < 0 && options.autoScroll) onAutoScrollChange(false);

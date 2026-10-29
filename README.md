@@ -1,6 +1,6 @@
 # EasyLog Serial
 
-EasyLogger 的配套串口工作台 · **lyg** · **v0.3.24**。Tauri 2 + React + Rust，Windows 10/11。
+EasyLogger 的配套串口工作台 · **lyg** · **v0.3.25**。Tauri 2 + React + Rust，Windows 10/11。
 
 ![界面预览（默认浅色，多分类同时展开）](docs/ui-v0318.png)
 
@@ -55,7 +55,8 @@ EasyLogger 的配套串口工作台 · **lyg** · **v0.3.24**。Tauri 2 + React 
 ### 文本复制与右键菜单
 
 - 日志区可直接拖选文本，按 **Ctrl+C** 复制选中内容
-- 日志区右键：复制选中、复制全部日志、查找、清除日志
+- 点击日志区后按 **Ctrl+A** 全选全部日志，再按 **Ctrl+C** 复制全部行；可见行会高亮提示
+- 日志区右键：全选日志、复制选中、复制全部日志、查找、清除日志
 - 下发文本框及其他文本输入框右键：剪切、复制、粘贴、全选、清除
 - 菜单操作不改变日志过滤和滚动状态
 
@@ -185,7 +186,7 @@ AT+CSQ
 
 ## 直接运行（免安装）
 
-免安装绿色版：[`release/EasyLog-Serial-0.3.24-portable.zip`](release/EasyLog-Serial-0.3.24-portable.zip)（约 2.0 MB）
+免安装绿色版：[`release/EasyLog-Serial-0.3.25-portable.zip`](release/EasyLog-Serial-0.3.25-portable.zip)（约 2.0 MB）
 
 - 解压到任意文件夹，双击 `EasyLogSerial.exe` 即可
 - 按住自定义标题栏空白处可拖动整个窗口；四边/四角可缩放

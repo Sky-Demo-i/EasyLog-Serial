@@ -308,6 +308,7 @@ export default function App() {
   const [activeMatch, setActiveMatch] = useState(0);
   const [searchToken, setSearchToken] = useState(0);
   const [textMenu, setTextMenu] = useState<TextMenuState | null>(null);
+  const [logSelectAll, setLogSelectAll] = useState(false);
 
   const [transport, setTransport] = useState<"serial" | "tcp">(() =>
     localStorage.getItem("easylog.transport.v1") === "tcp" ? "tcp" : "serial",
@@ -341,6 +342,7 @@ export default function App() {
   const connectOptionsRef = useRef(connectOptions);
   const pausedRef = useRef(paused);
   const connectedRef = useRef(connected);
+  const logSelectAllRef = useRef(logSelectAll);
   const transportRef = useRef(transport);
   const tcpPortRef = useRef(tcpPort);
   const serialTimestampRef = useRef(options.timestamp);
@@ -351,6 +353,7 @@ export default function App() {
   connectOptionsRef.current = connectOptions;
   pausedRef.current = paused;
   connectedRef.current = connected;
+  logSelectAllRef.current = logSelectAll;
   transportRef.current = transport;
   tcpPortRef.current = tcpPort;
   statsRef.current = stats;
@@ -752,7 +755,30 @@ export default function App() {
 
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
-      if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "c") return;
+      if (!(event.ctrlKey || event.metaKey)) return;
+      const key = event.key.toLowerCase();
+      const active = document.activeElement;
+      if (isEditableText(active)) return;
+
+      if (key === "a") {
+        const anchor = window.getSelection()?.anchorNode;
+        const anchorElement =
+          anchor instanceof Element ? anchor : anchor?.parentElement ?? null;
+        const inLog =
+          active?.classList.contains("log-viewport") ||
+          Boolean(anchorElement?.closest(".log-viewport"));
+        if (!inLog) return;
+        event.preventDefault();
+        selectAllLog();
+        return;
+      }
+
+      if (key !== "c") return;
+      if (logSelectAllRef.current) {
+        event.preventDefault();
+        void copyAllLogText();
+        return;
+      }
       const text = window.getSelection()?.toString() ?? "";
       if (!text) return;
       event.preventDefault();
@@ -1064,21 +1090,37 @@ export default function App() {
     stopReplay(true);
     storeRef.current.clear();
     resetStream();
+    setLogSelectAll(false);
     bump();
   };
 
-  const copyLog = async () => {
+  const selectAllLog = () => {
+    const count = storeRef.current.length;
+    if (count === 0) {
+      setStatus("没有可全选的日志");
+      return;
+    }
+    setLogSelectAll(true);
+    setStatus(`已全选 ${count} 行日志，Ctrl+C 复制`);
+  };
+
+  const copyAllLogText = useCallback(async () => {
     const text = storeRef.current.all
-      .map((line) => `${options.timestamp ? `[${formatTime(line.ts)}] ` : ""}${line.text}`)
+      .map(
+        (line) =>
+          `${optionsRef.current.timestamp ? `[${formatTime(line.ts)}] ` : ""}${line.text}`,
+      )
       .join("\r\n");
     if (!text) {
       setStatus("没有可复制的内容");
-      return;
+      return false;
     }
-    if (await writeClipboard(text)) {
-      setStatus(`已复制 ${storeRef.current.all.length} 行`);
-    }
-  };
+    const ok = await writeClipboard(text);
+    if (ok) setStatus(`已复制 ${storeRef.current.all.length} 行`);
+    return ok;
+  }, []);
+
+  const copyLog = () => copyAllLogText();
 
   const openTextMenu = (event: ReactMouseEvent) => {
     const element = event.target as HTMLElement;
@@ -1258,7 +1300,14 @@ export default function App() {
   }
 
   return (
-    <div className="app" data-lines={storeRef.current.length} onContextMenu={openTextMenu}>
+    <div
+      className="app"
+      data-lines={storeRef.current.length}
+      onContextMenu={openTextMenu}
+      onPointerDown={() => {
+        if (logSelectAll) setLogSelectAll(false);
+      }}
+    >
       <AppTitleBar />
       <WindowResizeHandles />
       <Toolbar
@@ -1645,6 +1694,7 @@ export default function App() {
               searchCaseSensitive={searchCaseSensitive}
               activeMatchRow={activeMatchRow}
               scrollToken={searchToken}
+              selectAll={logSelectAll}
               onAutoScrollChange={(value) => setOption("autoScroll", value)}
             />
           </section>
@@ -1734,6 +1784,14 @@ export default function App() {
             </>
           ) : (
             <>
+              <button
+                onClick={() => {
+                  selectAllLog();
+                  setTextMenu(null);
+                }}
+              >
+                全选日志
+              </button>
               <button
                 disabled={!textMenu.selected}
                 onClick={() => void copyMenuSelection()}
