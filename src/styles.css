@@ -274,6 +274,8 @@ input[type="checkbox"] {
 /* ---------------- toolbar ---------------- */
 
 .toolbar {
+  position: relative;
+  z-index: 20;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -283,6 +285,104 @@ input[type="checkbox"] {
   background: var(--panel);
   border-bottom: 1px solid var(--border);
   flex: none;
+}
+
+.toolbar-primary {
+  flex: 1 1 auto;
+  min-width: 0;
+  gap: 7px;
+}
+
+.toolbar-secondary {
+  flex: none;
+  gap: 7px;
+}
+
+.port-field select {
+  width: 205px;
+  max-width: 28vw;
+}
+
+.baud-field input[type="number"] {
+  width: 82px;
+}
+
+.encoding-field select {
+  width: 74px;
+}
+
+.serial-more {
+  position: relative;
+  flex: none;
+}
+
+.more-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.more-btn.active {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.more-caret {
+  color: var(--faint);
+  font-size: 10px;
+}
+
+.serial-popover {
+  position: absolute;
+  top: calc(100% + 7px);
+  left: 0;
+  z-index: 70;
+  width: 306px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: 0 14px 34px rgba(15, 23, 42, 0.18);
+}
+
+.serial-popover-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  color: var(--text);
+  font-size: 12px;
+}
+
+.serial-popover-head .link-btn {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.serial-popover-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.serial-popover-grid .field {
+  justify-content: space-between;
+}
+
+.serial-popover-grid .field select {
+  width: 84px;
+}
+
+.serial-popover-signals {
+  display: flex;
+  gap: 14px;
+  margin-top: 9px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
 }
 
 .group {
@@ -374,6 +474,34 @@ textarea:focus {
   font-size: 12px;
   cursor: pointer;
   user-select: none;
+}
+
+.mode-switch {
+  display: inline-flex;
+  flex: none;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+}
+
+.mode-switch button {
+  height: 24px;
+  padding: 0 9px;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.mode-switch button + button {
+  border-left: 1px solid var(--border);
+}
+
+.mode-switch button.active {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
 }
 
 /* ---------------- workspace ---------------- */

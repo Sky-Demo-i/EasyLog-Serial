@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import type {
   ConnectOptions,
   Encoding,
@@ -53,11 +54,35 @@ export default function Toolbar({
   onRefresh,
 }: Props) {
   const lock = connected || busy;
+  const [moreOpen, setMoreOpen] = useState(false);
+  const moreRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!moreOpen) return;
+    const onPointerDown = (event: MouseEvent) => {
+      if (!moreRef.current?.contains(event.target as Node)) setMoreOpen(false);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMoreOpen(false);
+    };
+    document.addEventListener("mousedown", onPointerDown);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [moreOpen]);
+
+  const connect = () => {
+    setMoreOpen(false);
+    if (connected) onDisconnect();
+    else onConnect();
+  };
 
   return (
     <div className="toolbar">
-      <div className="group">
-        <label className="field">
+      <div className="group toolbar-primary">
+        <label className="field port-field">
           <span>串口</span>
           <select
             value={config.portName}
@@ -77,7 +102,7 @@ export default function Toolbar({
           ↻
         </button>
 
-        <label className="field">
+        <label className="field baud-field">
           <span>波特率</span>
           <input
             list="baud-rates"
@@ -86,7 +111,9 @@ export default function Toolbar({
             disabled={lock}
             onChange={(e) => {
               const value = Number(e.target.value);
-              if (Number.isFinite(value) && value > 0) onConfigChange({ baudRate: Math.floor(value) });
+              if (Number.isFinite(value) && value > 0) {
+                onConfigChange({ baudRate: Math.floor(value) });
+              }
             }}
           />
           <datalist id="baud-rates">
@@ -96,88 +123,134 @@ export default function Toolbar({
           </datalist>
         </label>
 
-        <label className="field">
-          <span>数据位</span>
-          <select
-            value={config.dataBits}
-            disabled={lock}
-            onChange={(e) => onConfigChange({ dataBits: Number(e.target.value) })}
-          >
-            {[5, 6, 7, 8].map((n) => (
-              <option key={n} value={n}>
-                {n}
-              </option>
-            ))}
-          </select>
-        </label>
+        <button
+          className={`connect-btn ${connected ? "on" : ""}`}
+          onClick={connect}
+          disabled={busy || (!connected && !config.portName)}
+        >
+          {busy ? "处理中…" : connected ? "断开" : "连接"}
+        </button>
 
-        <label className="field">
-          <span>校验</span>
-          <select
-            value={config.parity}
-            disabled={lock}
-            onChange={(e) => onConfigChange({ parity: e.target.value as Parity })}
+        <div className="serial-more" ref={moreRef}>
+          <button
+            className={`more-btn ${moreOpen ? "active" : ""}`}
+            onClick={() => setMoreOpen((value) => !value)}
+            aria-expanded={moreOpen}
+            title="更多串口设置：数据位、校验、停止位、流控、DTR/RTS"
           >
-            <option value="none">无</option>
-            <option value="even">偶</option>
-            <option value="odd">奇</option>
-          </select>
-        </label>
+            更多设置
+            <span className="more-caret">{moreOpen ? "▴" : "▾"}</span>
+          </button>
+          {moreOpen && (
+            <div className="serial-popover" role="dialog" aria-label="更多串口设置">
+              <div className="serial-popover-head">
+                <strong>更多串口设置</strong>
+                <button
+                  className="link-btn"
+                  onClick={() => setMoreOpen(false)}
+                  title="关闭"
+                >
+                  ×
+                </button>
+              </div>
+              <div className="serial-popover-grid">
+                <label className="field">
+                  <span>数据位</span>
+                  <select
+                    value={config.dataBits}
+                    disabled={lock}
+                    onChange={(e) => onConfigChange({ dataBits: Number(e.target.value) })}
+                  >
+                    {[5, 6, 7, 8].map((n) => (
+                      <option key={n} value={n}>
+                        {n}
+                      </option>
+                    ))}
+                  </select>
+                </label>
 
-        <label className="field">
-          <span>停止位</span>
-          <select
-            value={config.stopBits}
-            disabled={lock}
-            onChange={(e) => onConfigChange({ stopBits: Number(e.target.value) })}
-          >
-            <option value={1}>1</option>
-            <option value={2}>2</option>
-          </select>
-        </label>
+                <label className="field">
+                  <span>校验</span>
+                  <select
+                    value={config.parity}
+                    disabled={lock}
+                    onChange={(e) =>
+                      onConfigChange({ parity: e.target.value as Parity })
+                    }
+                  >
+                    <option value="none">无</option>
+                    <option value="even">偶</option>
+                    <option value="odd">奇</option>
+                  </select>
+                </label>
 
-        <label className="field">
-          <span>流控</span>
-          <select
-            value={config.flowControl}
-            disabled={lock}
-            onChange={(e) =>
-              onConfigChange({ flowControl: e.target.value as SerialConfig["flowControl"] })
-            }
-          >
-            <option value="none">无</option>
-            <option value="software">XON/XOFF</option>
-            <option value="hardware">RTS/CTS</option>
-          </select>
-        </label>
-      </div>
+                <label className="field">
+                  <span>停止位</span>
+                  <select
+                    value={config.stopBits}
+                    disabled={lock}
+                    onChange={(e) =>
+                      onConfigChange({ stopBits: Number(e.target.value) })
+                    }
+                  >
+                    <option value={1}>1</option>
+                    <option value={2}>2</option>
+                  </select>
+                </label>
 
-      <div className="group">
-        <label className="check" title="数据终端就绪">
-          <input
-            type="checkbox"
-            checked={config.dtr}
-            onChange={(e) => onConfigChange({ dtr: e.target.checked })}
-          />
-          DTR
-        </label>
-        <label className="check" title="请求发送">
-          <input
-            type="checkbox"
-            checked={config.rts}
-            onChange={(e) => onConfigChange({ rts: e.target.checked })}
-          />
-          RTS
-        </label>
+                <label className="field">
+                  <span>流控</span>
+                  <select
+                    value={config.flowControl}
+                    disabled={lock}
+                    onChange={(e) =>
+                      onConfigChange({
+                        flowControl: e.target.value as SerialConfig["flowControl"],
+                      })
+                    }
+                  >
+                    <option value="none">无</option>
+                    <option value="software">XON/XOFF</option>
+                    <option value="hardware">RTS/CTS</option>
+                  </select>
+                </label>
+              </div>
+              <div className="serial-popover-signals">
+                <label className="check" title="数据终端就绪">
+                  <input
+                    type="checkbox"
+                    checked={config.dtr}
+                    disabled={lock}
+                    onChange={(e) => onConfigChange({ dtr: e.target.checked })}
+                  />
+                  DTR
+                </label>
+                <label className="check" title="请求发送">
+                  <input
+                    type="checkbox"
+                    checked={config.rts}
+                    disabled={lock}
+                    onChange={(e) => onConfigChange({ rts: e.target.checked })}
+                  />
+                  RTS
+                </label>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <span className="toolbar-sep" />
 
         <label
           className="check"
-          title="连接成功后自动发送一次下面的字符，并按发送框的“结尾”追加换行；部分 ASR USB 设备需要收到这个字符才开始输出日志"
+          title="连接成功后自动发送一次下面的内容，并按发送框的“结尾”追加换行；部分 ASR USB 设备需要收到这个字符才开始输出日志"
         >
           <input
             type="checkbox"
             checked={connectOptions.wakeEnabled}
-            onChange={(e) => onConnectOptionsChange({ wakeEnabled: e.target.checked })}
+            onChange={(e) =>
+              onConnectOptionsChange({ wakeEnabled: e.target.checked })
+            }
           />
           连接后发送
         </label>
@@ -189,10 +262,15 @@ export default function Toolbar({
           title="支持 \r \n \t \xNN 转义"
           onChange={(e) => onConnectOptionsChange({ wakeText: e.target.value })}
         />
+      </div>
 
-        <label className="field">
+      <div className="group toolbar-secondary">
+        <label className="field encoding-field">
           <span>编码</span>
-          <select value={encoding} onChange={(e) => onEncodingChange(e.target.value as Encoding)}>
+          <select
+            value={encoding}
+            onChange={(e) => onEncodingChange(e.target.value as Encoding)}
+          >
             <option value="utf-8">UTF-8</option>
             <option value="gbk">GBK</option>
           </select>
@@ -220,14 +298,6 @@ export default function Toolbar({
           onClick={() => onThemeChange(theme === "dark" ? "light" : "dark")}
         >
           {theme === "dark" ? "亮" : "暗"}
-        </button>
-
-        <button
-          className={`connect-btn ${connected ? "on" : ""}`}
-          onClick={connected ? onDisconnect : onConnect}
-          disabled={busy || (!connected && !config.portName)}
-        >
-          {busy ? "处理中…" : connected ? "断开" : "连接"}
         </button>
       </div>
     </div>

@@ -31,11 +31,12 @@ export interface ElogFields {
 }
 
 export function parseElogLine(text: string): ElogFields {
-  // In "原始ANSI" mode the line starts with ESC[..m and ends with ESC[0m.
-  // Parse metadata from the clean start, but keep the message body (without
-  // the boundary reset) so function/tag columns are still filled.
-  const source = text.replace(/^(?:\x1b\[[0-9;]*m)+/, "");
-  const cleanMessage = (value: string) => value.replace(/(?:\x1b\[[0-9;]*m)+$/, "");
+  // Most EasyLog output has no ANSI left after ingest; skip both regex passes.
+  const hasAnsi = text.includes("\x1b");
+  const source = hasAnsi ? text.replace(/^(?:\x1b\[[0-9;]*m)+/, "") : text;
+  const cleanMessage = hasAnsi
+    ? (value: string) => value.replace(/(?:\x1b\[[0-9;]*m)+$/, "")
+    : (value: string) => value;
 
   let match = FULL_RE.exec(source);
   if (match) {
@@ -84,8 +85,13 @@ export function parseElogLine(text: string): ElogFields {
 }
 
 /** Build a new log entry. Only RX text is parsed; TX/HEX lines stay raw. */
-export function makeEntry(ts: number, dir: LineDir, text: string): Omit<LogEntry, "id"> {
-  if (dir !== "rx") {
+export function makeEntry(
+  ts: number,
+  dir: LineDir,
+  text: string,
+  parse = true,
+): Omit<LogEntry, "id"> {
+  if (dir !== "rx" || !parse) {
     return {
       ts,
       dir,

@@ -94,9 +94,13 @@ export default function LogView({
   const lineWidth = Math.max(38, Math.ceil(fontSize * 2.6));
 
   const contentWidth = useMemo(() => {
+    // Measuring every historical line on each batch is the main render cost at
+    // high log rates. The newest window is enough for horizontal scroll sizing.
+    const sample = lines.length > 600 ? lines.slice(-600) : lines;
     let longest = "";
-    for (const entry of lines) {
-      if (entry.message.length > longest.length) longest = entry.message;
+    for (const entry of sample) {
+      const display = options.elogMode ? entry.message : entry.text;
+      if (display.length > longest.length) longest = display;
     }
     if (partial.length > longest.length) longest = partial;
 
@@ -139,7 +143,7 @@ export default function LogView({
   const lastTs = lines.length ? lines[lines.length - 1].ts : Date.now();
   let partialEntry: LogEntry | null = null;
   if (partial) {
-    const base = makeEntry(lastTs, "rx", partial);
+    const base = makeEntry(lastTs, "rx", partial, options.elogMode);
     partialEntry = { ...base, id: -1, message: `${base.message}▍` };
   }
 
@@ -170,6 +174,7 @@ export default function LogView({
     const isPartial = index >= lines.length;
     const entry = isPartial ? partialEntry! : lines[index];
     const showMeta = options.elogMode;
+    const displayText = showMeta ? entry.message : entry.text;
     const dim = showMeta && entry.parsed && (entry.level === "V" || entry.level === "D");
     const customColor = showMeta ? null : keywordColor(entry, colorRules);
     const rowStyle: CSSProperties = {
@@ -229,7 +234,9 @@ export default function LogView({
             {entry.parsed && entry.lineNo ? entry.lineNo : ""}
           </span>
         )}
-        <span className="col-msg">{highlightText(entry.message, searchTerm, searchCaseSensitive)}</span>
+        <span className="col-msg">
+          {highlightText(displayText, searchTerm, searchCaseSensitive)}
+        </span>
       </div>,
     );
   }

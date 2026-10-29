@@ -101,7 +101,13 @@ function loadConfig(): SerialConfig {
 function loadOptions(): DisplayOptions {
   try {
     const raw = localStorage.getItem(OPTS_KEY);
-    return raw ? { ...DEFAULT_OPTIONS, ...JSON.parse(raw) } : { ...DEFAULT_OPTIONS };
+    const merged = raw
+      ? { ...DEFAULT_OPTIONS, ...JSON.parse(raw) }
+      : { ...DEFAULT_OPTIONS };
+    // EasyLog and 原始 are mutually exclusive. EasyLog parses/cleans ANSI;
+    // 原始 keeps the stream untouched.
+    merged.ansiRaw = !merged.elogMode;
+    return merged;
   } catch {
     return { ...DEFAULT_OPTIONS };
   }
@@ -276,7 +282,7 @@ export default function App() {
     const target = searchCaseSensitive ? needle : needle.toLowerCase();
     const matches: number[] = [];
     view.visible.forEach((entry, index) => {
-      const haystack = `${entry.message}\n${entry.func}\n${entry.tag}`;
+      const haystack = `${entry.message}\n${entry.func}\n${entry.tag}\n${entry.text}`;
       if ((searchCaseSensitive ? haystack : haystack.toLowerCase()).includes(target)) {
         matches.push(index);
       }
@@ -327,7 +333,7 @@ export default function App() {
     renderTimerRef.current = window.setTimeout(() => {
       renderTimerRef.current = null;
       bump();
-    }, 50);
+    }, 33);
   }, []);
 
   const resetStream = useCallback((encoding?: Encoding) => {
@@ -354,18 +360,24 @@ export default function App() {
     if (!optionsRef.current.ansiRaw) {
       let combined = ansiCarryRef.current + decoded;
       ansiCarryRef.current = "";
-      const tail = combined.match(/\x1b(?:\[[0-9;?]*[ -/]*)?$/);
-      if (tail) {
-        ansiCarryRef.current = tail[0];
-        combined = combined.slice(0, combined.length - tail[0].length);
+      if (combined.includes("\x1b")) {
+        const tail = combined.match(/\x1b(?:\[[0-9;?]*[ -/]*)?$/);
+        if (tail) {
+          ansiCarryRef.current = tail[0];
+          combined = combined.slice(0, combined.length - tail[0].length);
+        }
+        text = stripAnsi(combined);
+      } else {
+        text = combined;
       }
-      text = stripAnsi(combined);
     }
 
     textBufRef.current += text;
 
     if (textBufRef.current.length > 65536) {
-      storeRef.current.push(makeEntry(ts, "rx", textBufRef.current.slice(0, 65536)));
+      storeRef.current.push(
+        makeEntry(ts, "rx", textBufRef.current.slice(0, 65536), optionsRef.current.elogMode),
+      );
       textBufRef.current = textBufRef.current.slice(65536);
     }
 
@@ -374,7 +386,7 @@ export default function App() {
     for (const part of parts) {
       const line = part.endsWith("\r") ? part.slice(0, -1) : part;
       if (line.length === 0) continue;
-      storeRef.current.push(makeEntry(ts, "rx", line));
+      storeRef.current.push(makeEntry(ts, "rx", line, optionsRef.current.elogMode));
     }
     partialRef.current = textBufRef.current;
   }, []);
@@ -383,7 +395,9 @@ export default function App() {
     for (let i = 0; i < bytes.length; i++) hexBufRef.current.push(bytes[i]);
     while (hexBufRef.current.length >= 16) {
       const row = hexBufRef.current.splice(0, 16);
-      storeRef.current.push(makeEntry(ts, "rx", formatHexRow(row, hexBaseRef.current)));
+      storeRef.current.push(
+        makeEntry(ts, "rx", formatHexRow(row, hexBaseRef.current), false),
+      );
       hexBaseRef.current += 16;
     }
     partialRef.current = hexBufRef.current.length
@@ -937,6 +951,14 @@ export default function App() {
     setStatus(`已导出 ${commands.length} 条指令`);
   };
 
+  function setDisplayMode(elogMode: boolean) {
+    if (options.elogMode === elogMode) return;
+    setOptions((prev) => ({ ...prev, elogMode, ansiRaw: !elogMode }));
+    resetStream();
+    storeRef.current.clear();
+    bump();
+  }
+
   function setOption<K extends keyof DisplayOptions>(key: K, value: DisplayOptions[K]) {
     setOptions((prev) => ({ ...prev, [key]: value }));
   }
@@ -1032,30 +1054,24 @@ export default function App() {
                   />
                   HEX
                 </label>
-                <label className="check" title="显示原始转义码，不剥离 ANSI">
-                  <input
-                    type="checkbox"
-                    checked={options.ansiRaw}
-                    onChange={(e) => {
-                      setOptions((prev) => ({ ...prev, ansiRaw: e.target.checked }));
-                      resetStream();
-                      storeRef.current.clear();
-                      bump();
-                    }}
-                  />
-                  原始ANSI
-                </label>
-                <label
-                  className="check"
-                  title="开启：解析 EasyLogger 的级别/Tag/函数并按级别着色；关闭：像 SSCOM 一样只显示原始文本"
-                >
-                  <input
-                    type="checkbox"
-                    checked={options.elogMode}
-                    onChange={(e) => setOption("elogMode", e.target.checked)}
-                  />
-                  EasyLog
-                </label>
+                <div className="mode-switch" role="group" aria-label="日志显示模式">
+                  <button
+                    type="button"
+                    className={options.elogMode ? "active" : ""}
+                    onClick={() => setDisplayMode(true)}
+                    title="解析 EasyLogger 的级别/Tag/函数，按级别着色"
+                  >
+                    EasyLog
+                  </button>
+                  <button
+                    type="button"
+                    className={!options.elogMode ? "active" : ""}
+                    onClick={() => setDisplayMode(false)}
+                    title="不解析，原样打印收到的文本"
+                  >
+                    原始
+                  </button>
+                </div>
                 <label className="check">
                   <input
                     type="checkbox"
@@ -1243,6 +1259,9 @@ export default function App() {
                     ) : (
                       searchMatches.slice(0, 300).map((lineIndex, matchIndex) => {
                         const entry = view.visible[lineIndex];
+                        const displayMessage = options.elogMode
+                          ? entry.message
+                          : entry.text;
                         return (
                           <button
                             type="button"
@@ -1269,9 +1288,9 @@ export default function App() {
                               {entry.dir === "tx" ? "发→" : entry.dir === "rx" ? "收←" : "·"}
                             </span>
                             <span className="search-result-msg">
-                              {includesSearch(entry.message) ? (
+                              {includesSearch(displayMessage) ? (
                                 highlightText(
-                                  entry.message,
+                                  displayMessage,
                                   searchTerm,
                                   searchCaseSensitive,
                                 )
@@ -1285,7 +1304,7 @@ export default function App() {
                                     )}
                                   </span>
                                   <span className="search-result-sep"> · </span>
-                                  {entry.message}
+                                  {displayMessage}
                                 </>
                               ) : (
                                 <>
@@ -1297,7 +1316,7 @@ export default function App() {
                                     )}
                                   </span>
                                   <span className="search-result-sep"> · </span>
-                                  {entry.message}
+                                  {displayMessage}
                                 </>
                               )}
                             </span>
