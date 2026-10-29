@@ -25,16 +25,17 @@ interface Props {
   header: ReactNode;
   colorRules: KeywordColorRule[];
   searchTerm: string;
+  searchCaseSensitive: boolean;
   activeMatchRow: number | null;
   scrollToken: number;
   onAutoScrollChange: (value: boolean) => void;
 }
 
-function highlightText(text: string, search: string): ReactNode {
+function highlightText(text: string, search: string, caseSensitive: boolean): ReactNode {
   const needle = search.trim();
   if (!needle || !text) return text;
-  const lower = text.toLowerCase();
-  const target = needle.toLowerCase();
+  const lower = caseSensitive ? text : text.toLowerCase();
+  const target = caseSensitive ? needle : needle.toLowerCase();
   const parts: ReactNode[] = [];
   let cursor = 0;
   let index = lower.indexOf(target, cursor);
@@ -77,6 +78,7 @@ export default function LogView({
   header,
   colorRules,
   searchTerm,
+  searchCaseSensitive,
   activeMatchRow,
   scrollToken,
   onAutoScrollChange,
@@ -210,7 +212,7 @@ export default function LogView({
         )}
         {showMeta && (
           <span className="col-tag" style={{ width: options.tagWidth }}>
-            {highlightText(entry.tag, searchTerm)}
+            {highlightText(entry.tag, searchTerm, searchCaseSensitive)}
           </span>
         )}
         {showMeta && (
@@ -219,7 +221,7 @@ export default function LogView({
             style={{ width: options.funcWidth }}
             title={entry.func ? `${entry.func}:${entry.lineNo}` : ""}
           >
-            {highlightText(entry.parsed ? entry.func : "", searchTerm)}
+            {highlightText(entry.parsed ? entry.func : "", searchTerm, searchCaseSensitive)}
           </span>
         )}
         {showMeta && (
@@ -227,7 +229,7 @@ export default function LogView({
             {entry.parsed && entry.lineNo ? entry.lineNo : ""}
           </span>
         )}
-        <span className="col-msg">{highlightText(entry.message, searchTerm)}</span>
+        <span className="col-msg">{highlightText(entry.message, searchTerm, searchCaseSensitive)}</span>
       </div>,
     );
   }

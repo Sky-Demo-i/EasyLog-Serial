@@ -1,8 +1,8 @@
 # EasyLog Serial
 
-EasyLogger 的配套串口工作台 · **lyg** · **v0.3.12**。Tauri 2 + React + Rust，Windows 10/11。
+EasyLogger 的配套串口工作台 · **lyg** · **v0.3.13**。Tauri 2 + React + Rust，Windows 10/11。
 
-![界面预览（默认浅色，多分类同时展开）](docs/ui-v0312.png)
+![界面预览（默认浅色，多分类同时展开）](docs/ui-v0313.png)
 
 ## 当前进度
 
@@ -44,8 +44,9 @@ EasyLogger 的配套串口工作台 · **lyg** · **v0.3.12**。Tauri 2 + React 
 
 - `Ctrl+F` 或接收工具栏的 **“搜索”** 打开查找条
 - 输入即高亮当前可见行里的匹配内容，并显示 `当前/总数`
-- `Enter` 下一个、`Shift+Enter` 上一个；当前匹配行会高亮并滚到视口中间
-- `Esc` 关闭并清空搜索
+- **`Aa` 区分大小写默认勾选**；取消后按不区分大小写匹配
+- 查找条下方直接列出匹配行（时间 / 级别 / 方向 / 内容），点击任意一行即可跳转并居中
+- `Enter` 下一个、`Shift+Enter` 上一个；`Esc` 关闭并清空
 - 查找不影响左侧过滤条件；只搜索当前显示出来的行
 
 ### 录制与回放
@@ -111,7 +112,8 @@ EasyLogger 的配套串口工作台 · **lyg** · **v0.3.12**。Tauri 2 + React 
 
 ### 发送 AT 前缀
 
-- 下发文本框底部可勾选 **`AT^GT_CM=`**，之后文本框里只输入 `VERSION`，发送时自动变成 `AT^GT_CM=VERSION`
+- 下发文本框底部 **`AT^GT_CM=` 默认勾选**；文本框里只输入 `VERSION`，发送时自动变成 `AT^GT_CM=VERSION`
+- 文本框为空时预览为 0 字节，不会只显示指令头
 - 只影响从下发文本框发出的内容（手动发送 / Ctrl+Enter / 定时发送），不改快捷指令本身
 - 内容已带 `AT^GT_CM=` 时不会重复添加；HEX 模式禁用该选项
 - 文本框下方的“+ 快捷指令”按钮已移除，新增指令统一在快捷指令分类末尾添加
@@ -153,7 +155,7 @@ AT+CSQ
 
 ## 直接运行（免安装）
 
-免安装绿色版：[`release/EasyLog-Serial-0.3.12-portable.zip`](release/EasyLog-Serial-0.3.12-portable.zip)（约 1.9 MB）
+免安装绿色版：[`release/EasyLog-Serial-0.3.13-portable.zip`](release/EasyLog-Serial-0.3.13-portable.zip)（约 1.9 MB）
 
 - 解压到任意文件夹，双击 `EasyLogSerial.exe` 即可
 - 按住自定义标题栏空白处可拖动整个窗口；四边/四角可缩放

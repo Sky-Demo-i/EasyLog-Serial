@@ -216,7 +216,7 @@ export default function App() {
 
   const [sendText, setSendText] = useState("");
   const [sendHex, setSendHex] = useState(false);
-  const [atPrefix, setAtPrefix] = useState(false);
+  const [atPrefix, setAtPrefix] = useState(true);
   const [append, setAppend] = useState<AppendMode>("crlf");
   const [autoSend, setAutoSend] = useState(false);
   const [autoInterval, setAutoInterval] = useState(1000);
@@ -231,6 +231,7 @@ export default function App() {
     useState<KeywordColorRule[]>(loadKeywordRules);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  const [searchCaseSensitive, setSearchCaseSensitive] = useState(true);
   const [activeMatch, setActiveMatch] = useState(0);
   const [searchToken, setSearchToken] = useState(0);
 
@@ -238,6 +239,7 @@ export default function App() {
 
   const storeRef = useRef(new LineStore());
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const activeResultRef = useRef<HTMLButtonElement>(null);
   const partialRef = useRef("");
   const decoderRef = useRef<TextDecoder>(new TextDecoder("utf-8"));
   const textBufRef = useRef("");
@@ -269,15 +271,18 @@ export default function App() {
   );
 
   const searchMatches = useMemo<number[]>(() => {
-    const needle = searchTerm.trim().toLowerCase();
+    const needle = searchTerm.trim();
     if (!needle) return [];
+    const target = searchCaseSensitive ? needle : needle.toLowerCase();
     const matches: number[] = [];
     view.visible.forEach((entry, index) => {
-      const haystack = `${entry.message}\n${entry.func}\n${entry.tag}`.toLowerCase();
-      if (haystack.includes(needle)) matches.push(index);
+      const haystack = `${entry.message}\n${entry.func}\n${entry.tag}`;
+      if ((searchCaseSensitive ? haystack : haystack.toLowerCase()).includes(target)) {
+        matches.push(index);
+      }
     });
     return matches;
-  }, [view.visible, searchTerm]);
+  }, [view.visible, searchTerm, searchCaseSensitive]);
 
   const activeMatchRow = searchMatches[activeMatch] ?? null;
 
@@ -301,6 +306,11 @@ export default function App() {
     setActiveMatch(
       (prev) => (prev + delta + searchMatches.length) % searchMatches.length,
     );
+    setSearchToken((value) => value + 1);
+  };
+
+  const jumpToMatch = (matchIndex: number) => {
+    setActiveMatch(matchIndex);
     setSearchToken((value) => value + 1);
   };
 
@@ -580,6 +590,10 @@ export default function App() {
       searchMatches.length === 0 ? 0 : Math.min(prev, searchMatches.length - 1),
     );
   }, [searchMatches.length]);
+
+  useEffect(() => {
+    activeResultRef.current?.scrollIntoView({ block: "nearest" });
+  }, [activeMatch, searchTerm]);
 
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
@@ -1141,52 +1155,110 @@ export default function App() {
               </div>
             </div>
             {searchOpen && (
-              <div className="log-search">
-                <span className="log-search-icon">⌕</span>
-                <input
-                  ref={searchInputRef}
-                  value={searchTerm}
-                  placeholder="搜索日志、函数、Tag…（Enter 下一个，Shift+Enter 上一个）"
-                  onChange={(e) => {
-                    setSearchTerm(e.target.value);
-                    setActiveMatch(0);
-                    setSearchToken((value) => value + 1);
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      goSearch(e.shiftKey ? -1 : 1);
-                    } else if (e.key === "Escape") {
-                      e.preventDefault();
-                      closeSearch();
-                    }
-                  }}
-                />
-                <span className="log-search-count">
-                  {searchMatches.length === 0
-                    ? "0/0"
-                    : `${activeMatch + 1}/${searchMatches.length}`}
-                </span>
-                <button
-                  className="icon-btn"
-                  title="上一个"
-                  disabled={searchMatches.length === 0}
-                  onClick={() => goSearch(-1)}
-                >
-                  ↑
-                </button>
-                <button
-                  className="icon-btn"
-                  title="下一个"
-                  disabled={searchMatches.length === 0}
-                  onClick={() => goSearch(1)}
-                >
-                  ↓
-                </button>
-                <button className="icon-btn" title="关闭搜索" onClick={closeSearch}>
-                  ×
-                </button>
-              </div>
+              <>
+                <div className="log-search">
+                  <span className="log-search-icon">⌕</span>
+                  <input
+                    ref={searchInputRef}
+                    value={searchTerm}
+                    placeholder="搜索日志、函数、Tag…（Enter 下一个，Shift+Enter 上一个）"
+                    onChange={(e) => {
+                      setSearchTerm(e.target.value);
+                      setActiveMatch(0);
+                      setSearchToken((value) => value + 1);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        goSearch(e.shiftKey ? -1 : 1);
+                      } else if (e.key === "Escape") {
+                        e.preventDefault();
+                        closeSearch();
+                      }
+                    }}
+                  />
+                  <label className="search-case" title="区分大小写">
+                    <input
+                      type="checkbox"
+                      checked={searchCaseSensitive}
+                      onChange={(e) => {
+                        setSearchCaseSensitive(e.target.checked);
+                        setActiveMatch(0);
+                        setSearchToken((value) => value + 1);
+                      }}
+                    />
+                    Aa
+                  </label>
+                  <span className="log-search-count">
+                    {searchMatches.length === 0
+                      ? "0/0"
+                      : `${activeMatch + 1}/${searchMatches.length}`}
+                  </span>
+                  <button
+                    className="icon-btn"
+                    title="上一个"
+                    disabled={searchMatches.length === 0}
+                    onClick={() => goSearch(-1)}
+                  >
+                    ↑
+                  </button>
+                  <button
+                    className="icon-btn"
+                    title="下一个"
+                    disabled={searchMatches.length === 0}
+                    onClick={() => goSearch(1)}
+                  >
+                    ↓
+                  </button>
+                  <button className="icon-btn" title="关闭搜索" onClick={closeSearch}>
+                    ×
+                  </button>
+                </div>
+
+                {searchTerm.trim() && (
+                  <div className="search-results">
+                    <div className="search-results-head">
+                      匹配 <b>{searchMatches.length}</b> 行
+                      {searchMatches.length > 300 && <span>（仅显示前 300 行）</span>}
+                    </div>
+                    {searchMatches.length === 0 ? (
+                      <div className="search-results-empty">没有匹配项</div>
+                    ) : (
+                      searchMatches.slice(0, 300).map((lineIndex, matchIndex) => {
+                        const entry = view.visible[lineIndex];
+                        return (
+                          <button
+                            type="button"
+                            key={lineIndex}
+                            ref={matchIndex === activeMatch ? activeResultRef : undefined}
+                            className={`search-result ${
+                              matchIndex === activeMatch ? "active" : ""
+                            }`}
+                            onClick={() => jumpToMatch(matchIndex)}
+                          >
+                            <span className="search-result-time">
+                              [{formatTime(entry.ts)}]
+                            </span>
+                            <span
+                              className={`search-result-lvl ${
+                                ["A", "E", "W", "I", "D", "V"].includes(entry.level)
+                                  ? `lv-${entry.level.toLowerCase()}`
+                                  : ""
+                              }`}
+                            >
+                              {entry.level}
+                            </span>
+                            <span className="search-result-dir">
+                              {entry.dir === "tx" ? "发→" : entry.dir === "rx" ? "收←" : "·"}
+                            </span>
+                            <span className="search-result-msg">{entry.message}</span>
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+                )}
+              </>
             )}
             <LogView
               lines={view.visible}
@@ -1201,6 +1273,7 @@ export default function App() {
               }
               colorRules={keywordRules}
               searchTerm={searchTerm}
+              searchCaseSensitive={searchCaseSensitive}
               activeMatchRow={activeMatchRow}
               scrollToken={searchToken}
               onAutoScrollChange={(value) => setOption("autoScroll", value)}

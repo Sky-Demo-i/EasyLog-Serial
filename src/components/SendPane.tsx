@@ -65,7 +65,7 @@ export default function SendPane({
   let preview = 0;
   try {
     const source =
-      atPrefix && !hex
+      atPrefix && !hex && value.length > 0
         ? value.startsWith("AT^GT_CM=")
           ? value
           : `AT^GT_CM=${value}`
