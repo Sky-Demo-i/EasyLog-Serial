@@ -605,32 +605,39 @@ export default function App() {
       }
       if (payload.length === 0) return false;
 
+      const sendTs = Date.now();
+      const txIds: number[] = [];
+      if (optionsRef.current.showTx) {
+        if (optionsRef.current.hex) {
+          for (let i = 0; i < payload.length; i += 16) {
+            txIds.push(
+              storeRef.current.push(
+                makeEntry(sendTs, "tx", formatHexRow(payload.slice(i, i + 16), i)),
+              ),
+            );
+          }
+        } else if (hex) {
+          const shown = Array.from(payload)
+            .map((b) => b.toString(16).toUpperCase().padStart(2, "0"))
+            .join(" ");
+          txIds.push(storeRef.current.push(makeEntry(sendTs, "tx", shown)));
+        } else {
+          txIds.push(
+            storeRef.current.push(
+              makeEntry(sendTs, "tx", escapeForDisplay(text + lineEnding(appendMode))),
+            ),
+          );
+        }
+        scheduleRender();
+      }
+
       try {
         await bridge.writePort(bytesToBase64(payload));
         setStats((prev) => ({ ...prev, tx: prev.tx + payload.length }));
-
-        if (optionsRef.current.showTx) {
-          const ts = Date.now();
-          if (optionsRef.current.hex) {
-            for (let i = 0; i < payload.length; i += 16) {
-              storeRef.current.push(
-                makeEntry(ts, "tx", formatHexRow(payload.slice(i, i + 16), i)),
-              );
-            }
-          } else if (hex) {
-            const shown = Array.from(payload)
-              .map((b) => b.toString(16).toUpperCase().padStart(2, "0"))
-              .join(" ");
-            storeRef.current.push(makeEntry(ts, "tx", shown));
-          } else {
-            storeRef.current.push(
-              makeEntry(ts, "tx", escapeForDisplay(text + lineEnding(appendMode))),
-            );
-          }
-          scheduleRender();
-        }
         return true;
       } catch (error) {
+        storeRef.current.remove(txIds);
+        if (txIds.length > 0) scheduleRender();
         setStatus(`发送失败：${normalizeError(error)}`);
         return false;
       }
@@ -677,15 +684,25 @@ export default function App() {
           // Match the send box's 结尾 setting: the ASR device may need "2\r\n",
           // not just "2". Set 结尾=无 if the device wants a single byte.
           const payload = buildPayload(parseEscapes(wakeText), false, append);
-          await bridge.writePort(bytesToBase64(payload));
-          setStats((prev) => ({ ...prev, tx: prev.tx + payload.length }));
-          if (optionsRef.current.showTx) {
-            storeRef.current.push(
-              makeEntry(Date.now(), "tx", escapeForDisplay(wakeText + lineEnding(append))),
+          const txId = optionsRef.current.showTx
+            ? storeRef.current.push(
+                makeEntry(Date.now(), "tx", escapeForDisplay(wakeText + lineEnding(append))),
+              )
+            : null;
+          if (txId !== null) scheduleRender();
+          try {
+            await bridge.writePort(bytesToBase64(payload));
+            setStats((prev) => ({ ...prev, tx: prev.tx + payload.length }));
+            setStatus(`已连接 ${config.portName}，已发送激活字符 "${wakeText}"`);
+          } catch (error) {
+            if (txId !== null) {
+              storeRef.current.remove([txId]);
+              scheduleRender();
+            }
+            setStatus(
+              `已连接 ${config.portName}，但激活字符发送失败：${normalizeError(error)}`,
             );
-            scheduleRender();
           }
-          setStatus(`已连接 ${config.portName}，已发送激活字符 "${wakeText}"`);
         } catch (error) {
           setStatus(
             `已连接 ${config.portName}，但激活字符发送失败：${normalizeError(error)}`,

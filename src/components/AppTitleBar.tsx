@@ -44,22 +44,29 @@ export function WindowResizeHandles() {
 }
 
 export default function AppTitleBar() {
+  const startDrag = (event: ReactPointerEvent<HTMLElement>) => {
+    if (event.button !== 0 || !appWindow) return;
+    if ((event.target as HTMLElement).closest("button")) return;
+    event.preventDefault();
+    void appWindow.startDragging();
+  };
+
   return (
     <header
       className="app-titlebar"
-      data-tauri-drag-region
+      onPointerDown={startDrag}
       onDoubleClick={(event) => {
         if ((event.target as HTMLElement).closest("button")) return;
         run("maximize");
       }}
     >
-      <div className="app-brand" data-tauri-drag-region>
+      <div className="app-brand">
         <span className="app-mark">EL</span>
         <span className="app-brand-name">EasyLog Serial</span>
         <span className="app-brand-sub">串口工作台</span>
-        <span className="app-author">lyg · v0.3.10</span>
+        <span className="app-author">lyg · v0.3.11</span>
       </div>
-      <span className="app-titlebar-spacer" data-tauri-drag-region />
+      <span className="app-titlebar-spacer" />
       <div className="window-controls">
         <button
           type="button"

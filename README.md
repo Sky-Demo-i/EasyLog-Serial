@@ -1,8 +1,8 @@
 # EasyLog Serial
 
-EasyLogger 的配套串口工作台 · **lyg** · **v0.3.10**。Tauri 2 + React + Rust，Windows 10/11。
+EasyLogger 的配套串口工作台 · **lyg** · **v0.3.11**。Tauri 2 + React + Rust，Windows 10/11。
 
-![界面预览（默认浅色，多分类同时展开）](docs/ui-v0310.png)
+![界面预览（默认浅色，多分类同时展开）](docs/ui-v0311.png)
 
 ## 当前进度
 
@@ -144,9 +144,10 @@ AT+CSQ
 
 ## 直接运行（免安装）
 
-免安装绿色版：[`release/EasyLog-Serial-0.3.10-portable.zip`](release/EasyLog-Serial-0.3.10-portable.zip)（约 1.9 MB）
+免安装绿色版：[`release/EasyLog-Serial-0.3.11-portable.zip`](release/EasyLog-Serial-0.3.11-portable.zip)（约 1.9 MB）
 
 - 解压到任意文件夹，双击 `EasyLogSerial.exe` 即可
+- 按住自定义标题栏空白处可拖动整个窗口；四边/四角可缩放
 - 必须同时保留 `WebView2Loader.dll`，不能只拷 exe
 - 需要 WebView2 Runtime（Windows 10/11 一般已自带）
 - 自动录制写在解压目录的 `logs\auto` 下；整个文件夹可以直接拷走使用
