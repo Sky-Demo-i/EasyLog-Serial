@@ -1,6 +1,6 @@
 # EasyLog Serial
 
-EasyLogger 的配套串口工作台 · **lyg** · **v0.3.21**。Tauri 2 + React + Rust，Windows 10/11。
+EasyLogger 的配套串口工作台 · **lyg** · **v0.3.22**。Tauri 2 + React + Rust，Windows 10/11。
 
 ![界面预览（默认浅色，多分类同时展开）](docs/ui-v0318.png)
 
@@ -24,7 +24,7 @@ EasyLogger 的配套串口工作台 · **lyg** · **v0.3.21**。Tauri 2 + React 
 | EasyLog / 原始二选一，互斥；原始模式不解析、原样打印并保留 ANSI | ✅ |
 | 关键字着色（EasyLog + 原始都可用）：左侧“关键字着色”规则命中后整行使用该颜色；**优先级高于级别颜色**，两种颜色互斥不叠加 | ✅ |
 | TCP Server：本地单端口监听、单客户端收发；客户端异常断开后继续监听等待重连，手动停止才关闭 | ✅ |
-| 高吞吐优化：日志宽度只测量最近窗口、无 ANSI 时跳过剥离正则、原始模式跳过解析；自动滚动直接渲染底部行，并用逐帧平滑跟随代替整屏跳到底部 | ✅ |
+| 高吞吐优化：日志宽度只测量最近窗口、无 ANSI 时跳过剥离正则、原始模式跳过解析；自动滚动采用传统逐行跟随到底部，不做连续平滑动画，EasyLog/原始一致 | ✅ |
 | 日志区查找：`Ctrl+F` 或“搜索”按钮，输入即高亮匹配，Enter / Shift+Enter 跳转，Esc 关闭 | ✅ |
 | 自动保存（独立功能）：同时写 JSONL（无损/可回放）和可读文本（时间戳 + RX/TX 文本），两者共用开关、分段和容量上限；手动保存、录制、自动保存全在工具目录 `logs` 下，文件名带时间和串口 | ✅ |
 | 真实设备联调 | ✅ COM5 @ 115200：勾选“连接后发送 2”后日志开始输出（RX 10.5 KB / 122 行）；发送 `AT^GT_CM=VERSION` 返回 `[VERSION]EL802K_...` |
@@ -176,7 +176,7 @@ AT+CSQ
 
 ## 直接运行（免安装）
 
-免安装绿色版：[`release/EasyLog-Serial-0.3.21-portable.zip`](release/EasyLog-Serial-0.3.21-portable.zip)（约 2.0 MB）
+免安装绿色版：[`release/EasyLog-Serial-0.3.22-portable.zip`](release/EasyLog-Serial-0.3.22-portable.zip)（约 2.0 MB）
 
 - 解压到任意文件夹，双击 `EasyLogSerial.exe` 即可
 - 按住自定义标题栏空白处可拖动整个窗口；四边/四角可缩放
