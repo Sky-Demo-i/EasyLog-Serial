@@ -47,7 +47,6 @@ export default function QuickCommands({
 }: Props) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState("");
-  const [activeCategory, setActiveCategory] = useState("");
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [newCategoryFor, setNewCategoryFor] = useState<string | null>(null);
   const [newCategoryName, setNewCategoryName] = useState("");
@@ -122,15 +121,8 @@ export default function QuickCommands({
     a === UNCATEGORIZED ? -1 : b === UNCATEGORIZED ? 1 : a.localeCompare(b, "zh-CN"),
   );
 
-  const categoryCounts = new Map<string, number>();
-  for (const command of commands) {
-    const category = categoryOf(command);
-    categoryCounts.set(category, (categoryCounts.get(category) ?? 0) + 1);
-  }
-
   const needle = query.trim().toLowerCase();
   const filtered = commands.filter((command) => {
-    if (activeCategory && categoryOf(command) !== activeCategory) return false;
     if (!needle) return true;
     return (
       command.name.toLowerCase().includes(needle) ||
@@ -147,10 +139,7 @@ export default function QuickCommands({
     .filter(
       (group) =>
         group.items.length > 0 ||
-        (commands.length === 0 &&
-          !needle &&
-          !activeCategory &&
-          group.category === UNCATEGORIZED),
+        (commands.length === 0 && !needle && group.category === UNCATEGORIZED),
     );
 
   const toggleCollapse = (category: string) => {
@@ -162,11 +151,13 @@ export default function QuickCommands({
     });
   };
 
+  const expandAll = () => setCollapsed(new Set());
+  const collapseAll = () => setCollapsed(new Set(categoryNames));
+
   const confirmNewCategory = () => {
     const name = newCategoryName.trim();
     if (!name || !newCategoryFor) return;
     update(newCategoryFor, { category: name });
-    setActiveCategory(name);
     setNewCategoryFor(null);
     setNewCategoryName("");
   };
@@ -183,7 +174,7 @@ export default function QuickCommands({
       <div className="pane-header">
         <span>快捷指令</span>
         <span className="counter">
-          {needle || activeCategory ? `${filtered.length}/${commands.length}` : commands.length}
+          {needle ? `${filtered.length}/${commands.length}` : commands.length}
         </span>
       </div>
 
@@ -197,11 +188,7 @@ export default function QuickCommands({
         <button
           onClick={() => onSendAll(sendable)}
           disabled={!connected || sendable.length === 0}
-          title={
-            activeCategory
-              ? `发送“${activeCategory}”里勾选的指令`
-              : "依次发送当前列表里勾选的指令"
-          }
+          title="依次发送当前列表里勾选的指令"
         >
           发送勾选
         </button>
@@ -244,23 +231,16 @@ export default function QuickCommands({
       </div>
 
       <div className="quick-cat-bar">
-        <select
-          value={activeCategory}
-          onChange={(e) => setActiveCategory(e.target.value)}
-          title="按分类抽屉筛选"
-        >
-          <option value="">全部分类（{commands.length}）</option>
-          {categoryNames.map((category) => (
-            <option key={category} value={category}>
-              {category}（{categoryCounts.get(category) ?? 0}）
-            </option>
-          ))}
-        </select>
-        {activeCategory && (
-          <button className="link-btn" onClick={() => setActiveCategory("")}>
-            全部
-          </button>
-        )}
+        <span className="quick-cat-summary">
+          {categoryNames.length} 个分类 · {commands.length} 条指令
+        </span>
+        <span className="spacer" />
+        <button className="link-btn" onClick={expandAll}>
+          全部展开
+        </button>
+        <button className="link-btn" onClick={collapseAll}>
+          全部收起
+        </button>
       </div>
 
       <div className="quick-list">

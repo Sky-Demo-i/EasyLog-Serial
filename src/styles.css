@@ -1217,9 +1217,19 @@ body.row-resizing * {
 .quick-cat-bar {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 7px;
   padding: 0 8px 6px;
   border-bottom: 1px solid var(--border);
+}
+
+.quick-cat-summary {
+  color: var(--muted);
+  font-size: 10.5px;
+  white-space: nowrap;
+}
+
+.quick-cat-bar .spacer {
+  flex: 1;
 }
 
 .quick-cat-bar select {
