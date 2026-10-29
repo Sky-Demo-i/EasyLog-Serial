@@ -1066,6 +1066,8 @@ body.row-resizing * {
   flex: 1;
   min-height: 0;
   overflow: auto;
+  overflow-anchor: none;
+  scrollbar-gutter: stable;
   background: #0c1118;
   font-family: "Cascadia Mono", "JetBrains Mono", Consolas, "Microsoft YaHei UI", monospace;
   font-size: 13px;

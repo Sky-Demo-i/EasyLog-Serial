@@ -166,7 +166,12 @@ export default function LogView({
 
   const visibleCount = Math.max(1, Math.ceil((height || 600) / rowHeight));
   const effectiveScrollTop = Math.max(0, scrollTop - HEADER_HEIGHT);
-  const start = Math.max(0, Math.floor(effectiveScrollTop / rowHeight) - 8);
+  // When following the tail, render the newest rows immediately instead of
+  // waiting for the programmatic scroll event to update scrollTop. Otherwise a
+  // batch can paint from the old position and then jump to the bottom.
+  const start = options.autoScroll
+    ? Math.max(0, total - visibleCount - 2)
+    : Math.max(0, Math.floor(effectiveScrollTop / rowHeight) - 8);
   const end = Math.min(total, start + visibleCount + 16);
 
   const rows = [];

@@ -1,6 +1,6 @@
 [package]
 name = "easylog-serial"
-version = "0.3.19"
+version = "0.3.20"
 description = "EasyLog Serial - serial port workbench for EasyLogger"
 authors = ["lyg"]
 edition = "2024"

@@ -353,7 +353,7 @@ export default function App() {
     renderTimerRef.current = window.setTimeout(() => {
       renderTimerRef.current = null;
       bump();
-    }, 33);
+    }, 16);
   }, []);
 
   const resetStream = useCallback((encoding?: Encoding) => {
