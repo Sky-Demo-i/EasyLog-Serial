@@ -1,7 +1,7 @@
 import type { PointerEvent as ReactPointerEvent } from "react";
 import type { DisplayOptions } from "../types";
 
-type ResizeKey = "timeWidth" | "tagWidth" | "funcWidth";
+type ResizeKey = "timeWidth" | "tagWidth" | "funcWidth" | "lineWidth" | "tickWidth";
 
 interface Props {
   options: DisplayOptions;
@@ -11,7 +11,9 @@ interface Props {
 const LIMITS: Record<ResizeKey, [number, number]> = {
   timeWidth: [70, 200],
   tagWidth: [40, 160],
-  funcWidth: [120, 600],
+  funcWidth: [80, 600],
+  lineWidth: [24, 120],
+  tickWidth: [48, 240],
 };
 
 export default function LogHeader({ options, onResize }: Props) {
@@ -19,12 +21,13 @@ export default function LogHeader({ options, onResize }: Props) {
   const timeWidth = Math.max(options.timeWidth, Math.ceil(fontSize * 8.4));
   const dirWidth = Math.max(28, Math.ceil(fontSize * 2.4));
   const levelWidth = Math.max(24, Math.ceil(fontSize * 1.55));
-  const lineWidth = Math.max(38, Math.ceil(fontSize * 2.6));
+  const lineWidth = Math.max(options.lineWidth ?? 44, Math.ceil(fontSize * 2.6));
+  const tickWidth = Math.max(options.tickWidth ?? 88, Math.ceil(fontSize * 6));
 
   const startResize = (key: ResizeKey, event: ReactPointerEvent) => {
     event.preventDefault();
     const startX = event.clientX;
-    const startWidth = options[key];
+    const startWidth = options[key] ?? 44;
     document.body.classList.add("col-resizing");
 
     const move = (moveEvent: PointerEvent) => {
@@ -83,7 +86,12 @@ export default function LogHeader({ options, onResize }: Props) {
       )}
       {options.elogMode && (
         <span className="log-hcell" style={{ width: lineWidth, textAlign: "right" }}>
-          行
+          行{resizer("lineWidth")}
+        </span>
+      )}
+      {options.elogMode && (
+        <span className="log-hcell" style={{ width: tickWidth }}>
+          TICK{resizer("tickWidth")}
         </span>
       )}
       <span className="log-hcell grow">消息</span>

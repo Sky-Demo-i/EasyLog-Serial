@@ -1427,6 +1427,17 @@ body.row-resizing * {
   text-overflow: ellipsis;
 }
 
+.col-tick {
+  flex: none;
+  width: 88px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--row-color);
+  opacity: 0.8;
+  font-size: 0.86em;
+  white-space: nowrap;
+}
+
 .log-row.level-A {
   --row-color: #f0a6ff;
 }
@@ -1776,6 +1787,32 @@ body.row-resizing * {
   border-color: var(--accent);
   background: var(--accent-soft, #e8eefc);
   color: var(--accent);
+}
+
+.quick-move-group {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 1px;
+  flex: none;
+}
+
+.quick-move {
+  width: 14px;
+  height: 10px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--faint);
+  font-size: 7px;
+  line-height: 10px;
+}
+
+.quick-move:hover:not(:disabled) {
+  color: var(--accent);
+}
+
+.quick-move:disabled {
+  opacity: 0.2;
 }
 
 .quick-order::-webkit-inner-spin-button,

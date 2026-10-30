@@ -214,6 +214,32 @@ export default function QuickCommands({
     if (looping) onStopLoop();
   };
 
+  const moveCommand = (command: QuickCommand, delta: number) => {
+    const category = categoryOf(command);
+    const ids = commands
+      .filter((item) => categoryOf(item) === category)
+      .map((item) => item.id);
+    const from = ids.indexOf(command.id);
+    const to = from + delta;
+    if (from < 0 || to < 0 || to >= ids.length) return;
+    const targetId = ids[to];
+    const fromIndex = commands.findIndex((item) => item.id === command.id);
+    const targetIndex = commands.findIndex((item) => item.id === targetId);
+    if (fromIndex < 0 || targetIndex < 0) return;
+    const next = [...commands];
+    [next[fromIndex], next[targetIndex]] = [next[targetIndex], next[fromIndex]];
+    onChange(next);
+  };
+
+  const canMoveCommand = (command: QuickCommand, delta: number) => {
+    const ids = commands
+      .filter((item) => categoryOf(item) === categoryOf(command))
+      .map((item) => item.id);
+    const index = ids.indexOf(command.id);
+    const target = index + delta;
+    return index >= 0 && target >= 0 && target < ids.length;
+  };
+
   const confirmNewCategory = () => {
     const name = newCategoryName.trim();
     if (!name || !newCategoryFor) return;
@@ -462,6 +488,28 @@ export default function QuickCommands({
               >
                 ×
               </button>
+              <span className="quick-move-group">
+                <button
+                  type="button"
+                  className="quick-move"
+                  title="上移"
+                  disabled={!canMoveCommand(command, -1)}
+                  onDoubleClick={(e) => e.stopPropagation()}
+                  onClick={() => moveCommand(command, -1)}
+                >
+                  ▲
+                </button>
+                <button
+                  type="button"
+                  className="quick-move"
+                  title="下移"
+                  disabled={!canMoveCommand(command, 1)}
+                  onDoubleClick={(e) => e.stopPropagation()}
+                  onClick={() => moveCommand(command, 1)}
+                >
+                  ▼
+                </button>
+              </span>
             </div>
             <div className="quick-item-sub">
               <input

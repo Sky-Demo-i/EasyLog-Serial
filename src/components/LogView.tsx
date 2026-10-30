@@ -93,7 +93,8 @@ export default function LogView({
   const timeWidth = Math.max(options.timeWidth, Math.ceil(fontSize * 8.4));
   const dirWidth = Math.max(28, Math.ceil(fontSize * 2.4));
   const levelWidth = Math.max(24, Math.ceil(fontSize * 1.55));
-  const lineWidth = Math.max(38, Math.ceil(fontSize * 2.6));
+  const lineWidth = Math.max(options.lineWidth ?? 44, Math.ceil(fontSize * 2.6));
+  const tickWidth = Math.max(options.tickWidth ?? 88, Math.ceil(fontSize * 6));
 
   const contentWidth = useMemo(() => {
     // Measuring every historical line on each batch is the main render cost at
@@ -113,7 +114,16 @@ export default function LogView({
     if (options.direction) fixed += dirWidth + gap;
     if (options.elogMode) {
       fixed +=
-        levelWidth + gap + options.tagWidth + gap + options.funcWidth + gap + lineWidth + gap;
+        levelWidth +
+        gap +
+        options.tagWidth +
+        gap +
+        options.funcWidth +
+        gap +
+        lineWidth +
+        gap +
+        tickWidth +
+        gap;
     }
     const messageWidth = Math.max(260, Math.ceil(measurePx(longest, fontSize)) + 16);
     return Math.min(30000, Math.max(560, fixed + messageWidth + pad));
@@ -125,6 +135,7 @@ export default function LogView({
     dirWidth,
     levelWidth,
     lineWidth,
+    tickWidth,
     options.timestamp,
     options.direction,
     options.elogMode,
@@ -240,6 +251,15 @@ export default function LogView({
         {showMeta && (
           <span className="col-line" style={{ width: lineWidth }}>
             {entry.parsed && entry.lineNo ? entry.lineNo : ""}
+          </span>
+        )}
+        {showMeta && (
+          <span
+            className="col-tick"
+            style={{ width: tickWidth }}
+            title={entry.tick ? `设备 tick: ${entry.tick}` : ""}
+          >
+            {highlightText(entry.tick ?? "", searchTerm, searchCaseSensitive)}
           </span>
         )}
         <span className="col-msg">

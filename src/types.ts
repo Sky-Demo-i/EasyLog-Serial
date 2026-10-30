@@ -59,6 +59,8 @@ export interface LogEntry {
   tag: string;
   lineNo: number;
   func: string;
+  /** First [key=value] bracket after the EasyLogger function (device tick). */
+  tick?: string;
   /** ANSI-stripped message (what the table shows). */
   message: string;
   /** Original line, used for copy/save/search. */
@@ -100,6 +102,8 @@ export interface DisplayOptions {
   timeWidth: number;
   tagWidth: number;
   funcWidth: number;
+  lineWidth: number;
+  tickWidth: number;
   filterWidth: number;
   quickWidth: number;
   sendHeight: number;

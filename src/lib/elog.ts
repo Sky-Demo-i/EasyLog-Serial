@@ -26,8 +26,18 @@ export interface ElogFields {
   tag: string;
   lineNo: number;
   func: string;
+  tick: string;
   message: string;
   parsed: boolean;
+}
+
+function splitTick(value: string): { tick: string; message: string } {
+  const match = /^\s*\[([^\]]+)\]\s*/.exec(value);
+  if (!match) return { tick: "", message: value };
+  return {
+    tick: match[1].trim(),
+    message: value.slice(match[0].length).trimStart(),
+  };
 }
 
 export function parseElogLine(text: string): ElogFields {
@@ -40,36 +50,42 @@ export function parseElogLine(text: string): ElogFields {
 
   let match = FULL_RE.exec(source);
   if (match) {
+    const body = splitTick(cleanMessage(match[5]));
     return {
       level: match[1] as LogLevel,
       tag: match[2].trim(),
       lineNo: Number(match[3]),
       func: match[4],
-      message: cleanMessage(match[5]),
+      tick: body.tick,
+      message: body.message,
       parsed: true,
     };
   }
 
   match = TAG_ONLY_RE.exec(source);
   if (match) {
+    const body = splitTick(cleanMessage(match[3]));
     return {
       level: match[1] as LogLevel,
       tag: match[2].trim(),
       lineNo: 0,
       func: "",
-      message: cleanMessage(match[3]),
+      tick: body.tick,
+      message: body.message,
       parsed: true,
     };
   }
 
   match = LEVEL_ONLY_RE.exec(source);
   if (match) {
+    const body = splitTick(cleanMessage(match[2]));
     return {
       level: match[1] as LogLevel,
       tag: "",
       lineNo: 0,
       func: "",
-      message: cleanMessage(match[2]),
+      tick: body.tick,
+      message: body.message,
       parsed: true,
     };
   }
@@ -79,6 +95,7 @@ export function parseElogLine(text: string): ElogFields {
     tag: "",
     lineNo: 0,
     func: "",
+    tick: "",
     message: text,
     parsed: false,
   };
@@ -99,6 +116,7 @@ export function makeEntry(
       tag: "",
       lineNo: 0,
       func: "",
+      tick: "",
       message: text,
       text,
       parsed: false,
@@ -112,6 +130,7 @@ export function makeEntry(
     tag: fields.tag,
     lineNo: fields.lineNo,
     func: fields.func,
+    tick: fields.tick,
     message: fields.message,
     text,
     parsed: fields.parsed,

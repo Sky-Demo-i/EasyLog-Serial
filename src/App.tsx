@@ -130,6 +130,8 @@ const DEFAULT_OPTIONS: DisplayOptions = {
   timeWidth: 112,
   tagWidth: 48,
   funcWidth: 240,
+  lineWidth: 44,
+  tickWidth: 88,
   filterWidth: 220,
   quickWidth: 440,
   sendHeight: 172,
@@ -393,6 +395,13 @@ export default function App() {
   const loopRef = useRef(false);
   const commandsRef = useRef(commands);
   commandsRef.current = commands;
+  const configRef = useRef(config);
+  configRef.current = config;
+  const manualDisconnectRef = useRef(false);
+  const reconnectTimerRef = useRef<number | null>(null);
+  const reconnectAttemptRef = useRef(0);
+  const reconnectingRef = useRef(false);
+  const serialWasConnectedRef = useRef(false);
   const transportRef = useRef(transport);
   const tcpPortRef = useRef(tcpPort);
   const serialTimestampRef = useRef(options.timestamp);
@@ -420,7 +429,7 @@ export default function App() {
     const target = searchCaseSensitive ? needle : needle.toLowerCase();
     const matches: number[] = [];
     view.visible.forEach((entry, index) => {
-      const haystack = `${entry.message}\n${entry.func}\n${entry.tag}\n${entry.text}`;
+      const haystack = `${entry.message}\n${entry.func}\n${entry.tag}\n${entry.tick ?? ""}\n${entry.text}`;
       if ((searchCaseSensitive ? haystack : haystack.toLowerCase()).includes(target)) {
         matches.push(index);
       }
@@ -473,6 +482,70 @@ export default function App() {
       bump();
     }, 16);
   }, []);
+
+  function clearReconnectTimer() {
+    if (reconnectTimerRef.current !== null) {
+      window.clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
+    }
+  }
+
+  function beginAutoReconnect() {
+    if (
+      reconnectTimerRef.current !== null ||
+      manualDisconnectRef.current ||
+      transportRef.current !== "serial" ||
+      !configRef.current.portName
+    ) {
+      return;
+    }
+
+    reconnectAttemptRef.current = 0;
+    reconnectingRef.current = true;
+    setStatus(`连接断开，等待 ${configRef.current.portName} 自动回连…`);
+
+    const attempt = async () => {
+      reconnectTimerRef.current = null;
+      if (
+        manualDisconnectRef.current ||
+        transportRef.current !== "serial" ||
+        !configRef.current.portName
+      ) {
+        reconnectingRef.current = false;
+        return;
+      }
+      reconnectAttemptRef.current += 1;
+      try {
+        await bridge.openPort(configRef.current);
+        if (manualDisconnectRef.current || transportRef.current !== "serial") {
+          reconnectingRef.current = false;
+          if (manualDisconnectRef.current) {
+            await bridge.closePort().catch(() => {});
+          }
+          return;
+        }
+        reconnectingRef.current = false;
+        serialWasConnectedRef.current = true;
+        setConnected(true);
+        const marker = `──────── ${configRef.current.portName} 已自动回连 @ ${configRef.current.baudRate} ────────`;
+        storeRef.current.push(makeEntry(Date.now(), "sys", marker));
+        scheduleRender();
+        setStatus(`${configRef.current.portName} 已自动回连，接收区继续保留`);
+      } catch {
+        const wait = Math.min(5000, 800 + reconnectAttemptRef.current * 600);
+        if (manualDisconnectRef.current) {
+          reconnectingRef.current = false;
+          return;
+        }
+        setStatus(
+          `${configRef.current.portName} 未就绪，${Math.round(wait / 100) / 10}s 后重试（第 ${reconnectAttemptRef.current} 次）`,
+        );
+        reconnectTimerRef.current = window.setTimeout(attempt, wait);
+      }
+    };
+
+    reconnectTimerRef.current = window.setTimeout(attempt, 800);
+  }
 
   const resetStream = useCallback((encoding?: Encoding) => {
     textBufRef.current = "";
@@ -703,11 +776,25 @@ export default function App() {
       offState = await bridge.onSerialState((payload) => {
         setConnected(payload.connected);
         setStatus(payload.message);
-        if (!payload.connected) {
+        if (payload.connected) {
+          if (transportRef.current === "serial") {
+            serialWasConnectedRef.current = true;
+          }
+          clearReconnectTimer();
+          reconnectingRef.current = false;
+        } else {
           setRecording(false);
           setTcpClients([]);
           loopRef.current = false;
           setLooping(false);
+          if (
+            transportRef.current === "serial" &&
+            !manualDisconnectRef.current &&
+            !reconnectingRef.current &&
+            serialWasConnectedRef.current
+          ) {
+            beginAutoReconnect();
+          }
         }
       });
       offTcpClients = await bridge.onTcpClients((payload) => {
@@ -917,6 +1004,7 @@ export default function App() {
       if (replayTimerRef.current !== null) window.clearTimeout(replayTimerRef.current);
       replayCancelledRef.current = true;
       loopRef.current = false;
+      clearReconnectTimer();
       void bridge.stopRecording().catch(() => {});
     };
   }, []);
@@ -992,6 +1080,9 @@ export default function App() {
   }, [autoSend, connected, autoInterval, doSend]);
 
   const handleConnect = async () => {
+    manualDisconnectRef.current = false;
+    reconnectingRef.current = true;
+    clearReconnectTimer();
     if (loopRef.current) {
       loopRef.current = false;
       setLooping(false);
@@ -1022,6 +1113,7 @@ export default function App() {
 
     if (!config.portName) {
       setStatus("请选择串口");
+      reconnectingRef.current = false;
       return;
     }
     setBusy(true);
@@ -1075,12 +1167,17 @@ export default function App() {
     } catch (error) {
       setStatus(normalizeError(error));
       setConnected(false);
+      reconnectingRef.current = false;
     } finally {
       setBusy(false);
     }
   };
 
   const handleDisconnect = async () => {
+    manualDisconnectRef.current = true;
+    reconnectingRef.current = false;
+    serialWasConnectedRef.current = false;
+    clearReconnectTimer();
     if (loopRef.current) {
       loopRef.current = false;
       setLooping(false);
@@ -1414,6 +1511,9 @@ export default function App() {
 
   function switchTransport(next: "serial" | "tcp") {
     if (connected || next === transport) return;
+    clearReconnectTimer();
+    reconnectingRef.current = false;
+    serialWasConnectedRef.current = false;
     if (next === "tcp") {
       serialTimestampRef.current = options.timestamp;
       setOption("timestamp", false);
