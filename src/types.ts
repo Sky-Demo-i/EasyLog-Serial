@@ -45,8 +45,10 @@ export interface QuickCommand {
   enabled: boolean;
   /** Drawer/category name. Missing means 未分类. */
   category?: string;
-  /** Per-command gap used by "send all", in ms (SSCOM stores this). */
+  /** Per-command gap used by sequential/loop sending, in ms. */
   delayMs?: number;
+  /** Loop send order. 0 means excluded from loop sending. */
+  order?: number;
 }
 
 export interface LogEntry {

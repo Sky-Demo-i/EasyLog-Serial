@@ -6,9 +6,12 @@ interface Props {
   commands: QuickCommand[];
   connected: boolean;
   width: number;
+  looping: boolean;
   onChange: (commands: QuickCommand[]) => void;
   onSend: (command: QuickCommand) => void;
   onSendAll: (commands: QuickCommand[]) => void;
+  onStartLoop: () => void;
+  onStopLoop: () => void;
   onLoad: (command: QuickCommand) => void;
   onImport: (text: string, filename: string) => void;
   onExport: () => void;
@@ -29,13 +32,20 @@ function categoryOf(command: QuickCommand): string {
   return command.category?.trim() || UNCATEGORIZED;
 }
 
+function clampNumber(value: string, max: number): number {
+  return Math.min(max, Math.max(0, Math.floor(Number(value) || 0)));
+}
+
 export default function QuickCommands({
   commands,
   connected,
   width,
+  looping,
   onChange,
   onSend,
   onSendAll,
+  onStartLoop,
+  onStopLoop,
   onLoad,
   onImport,
   onExport,
@@ -43,7 +53,7 @@ export default function QuickCommands({
 }: Props) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState("");
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [activeCategory, setActiveCategory] = useState("");
   const [newCategoryFor, setNewCategoryFor] = useState<string | null>(null);
   const [newCategoryName, setNewCategoryName] = useState("");
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
@@ -57,7 +67,7 @@ export default function QuickCommands({
 
     const move = (moveEvent: PointerEvent) => {
       const next = Math.round(
-        Math.min(560, Math.max(260, startWidth - (moveEvent.clientX - startX))),
+        Math.min(620, Math.max(300, startWidth - (moveEvent.clientX - startX))),
       );
       onWidthChange(next);
     };
@@ -92,16 +102,16 @@ export default function QuickCommands({
     const body = raw.startsWith(AT_PREFIX) ? raw.slice(AT_PREFIX.length) : raw;
     if (!body.trim()) return;
 
-    const data = raw;
-    const name = draft.name.trim() || body.slice(0, 24);
     const command: QuickCommand = {
       id: `cmd-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-      name,
-      data,
+      name: draft.name.trim() || body.slice(0, 24),
+      data: raw,
       hex: false,
       append: "global",
       enabled: true,
       category,
+      delayMs: 0,
+      order: 0,
     };
     onChange([...commands, command]);
     setDrafts((prev) => ({
@@ -117,6 +127,16 @@ export default function QuickCommands({
     a === UNCATEGORIZED ? -1 : b === UNCATEGORIZED ? 1 : a.localeCompare(b, "zh-CN"),
   );
 
+  const categoryCounts = new Map<string, number>();
+  for (const command of commands) {
+    const category = categoryOf(command);
+    categoryCounts.set(category, (categoryCounts.get(category) ?? 0) + 1);
+  }
+
+  const currentCategory = categoryNames.includes(activeCategory)
+    ? activeCategory
+    : categoryNames[0];
+
   const needle = query.trim().toLowerCase();
   const filtered = commands.filter((command) => {
     if (!needle) return true;
@@ -127,38 +147,35 @@ export default function QuickCommands({
     );
   });
 
-  const groups = categoryNames
-    .map((category) => ({
-      category,
-      items: filtered.filter((command) => categoryOf(command) === category),
-    }))
-    .filter(
-      (group) =>
-        group.items.length > 0 ||
-        (commands.length === 0 && !needle && group.category === UNCATEGORIZED),
-    );
+  const pageItems = needle
+    ? filtered
+    : filtered.filter((command) => categoryOf(command) === currentCategory);
 
-  const toggleCollapse = (category: string) => {
-    setCollapsed((prev) => {
-      const next = new Set(prev);
-      if (next.has(category)) next.delete(category);
-      else next.add(category);
-      return next;
-    });
+  const enabledCommands = commands.filter((command) => command.enabled);
+  const loopCount = enabledCommands.filter((command) => (command.order ?? 0) > 0).length;
+
+  const selectPage = (enabled: boolean) => {
+    const ids = new Set(pageItems.map((command) => command.id));
+    onChange(
+      commands.map((command) =>
+        ids.has(command.id) ? { ...command, enabled } : command,
+      ),
+    );
   };
 
-  const expandAll = () => setCollapsed(new Set());
-  const collapseAll = () => setCollapsed(new Set(categoryNames));
+  const resetOrder = () => {
+    onChange(commands.map((command) => ({ ...command, order: 0 })));
+    if (looping) onStopLoop();
+  };
 
   const confirmNewCategory = () => {
     const name = newCategoryName.trim();
     if (!name || !newCategoryFor) return;
     update(newCategoryFor, { category: name });
+    setActiveCategory(name);
     setNewCategoryFor(null);
     setNewCategoryName("");
   };
-
-  const sendable = filtered.filter((command) => command.enabled);
 
   return (
     <aside className="quick-pane">
@@ -169,9 +186,7 @@ export default function QuickCommands({
       />
       <div className="pane-header">
         <span>快捷指令</span>
-        <span className="counter">
-          {needle ? `${filtered.length}/${commands.length}` : commands.length}
-        </span>
+        <span className="counter">{commands.length}</span>
       </div>
 
       <div className="quick-toolbar">
@@ -182,11 +197,26 @@ export default function QuickCommands({
           导出
         </button>
         <button
-          onClick={() => onSendAll(sendable)}
-          disabled={!connected || sendable.length === 0}
-          title="依次发送当前列表里勾选的指令"
+          onClick={() => onSendAll(enabledCommands)}
+          disabled={!connected || enabledCommands.length === 0}
+          title="按列表顺序发送一次所有勾选指令"
         >
           发送勾选
+        </button>
+        <button
+          className={looping ? "rec-btn recording" : ""}
+          onClick={looping ? onStopLoop : onStartLoop}
+          disabled={!connected || (!looping && loopCount === 0)}
+          title="按序号循环发送；序号 0 不参与"
+        >
+          {looping ? "停止循环" : "循环发送"}
+        </button>
+        <button
+          onClick={resetOrder}
+          disabled={!commands.some((command) => (command.order ?? 0) !== 0)}
+          title="把所有指令的循环序号归 0"
+        >
+          全部归0
         </button>
         <input
           ref={fileRef}
@@ -226,192 +256,231 @@ export default function QuickCommands({
         )}
       </div>
 
-      <div className="quick-cat-bar">
-        <span className="quick-cat-summary">
-          {categoryNames.length} 个分类 · {commands.length} 条指令
+      <div className="quick-tabs" role="tablist" aria-label="指令分类">
+        {categoryNames.map((category) => (
+          <button
+            key={category}
+            type="button"
+            role="tab"
+            aria-selected={!needle && category === currentCategory}
+            className={`quick-tab ${!needle && category === currentCategory ? "active" : ""}`}
+            onClick={() => setActiveCategory(category)}
+            title={category}
+          >
+            <span>{category}</span>
+            <small>{categoryCounts.get(category) ?? 0}</small>
+          </button>
+        ))}
+      </div>
+
+      <div className="quick-page-bar">
+        <span className="quick-page-title">
+          {needle ? "搜索结果" : currentCategory}
+        </span>
+        <span className="quick-page-count">
+          {pageItems.length} 条 / 已选 {pageItems.filter((command) => command.enabled).length}
         </span>
         <span className="spacer" />
-        <button className="link-btn" onClick={expandAll}>
-          全部展开
+        <button
+          className="link-btn"
+          onClick={() => selectPage(true)}
+          disabled={pageItems.length === 0}
+        >
+          {needle ? "全选结果" : "全选本类"}
         </button>
-        <button className="link-btn" onClick={collapseAll}>
-          全部收起
+        <button
+          className="link-btn"
+          onClick={() => selectPage(false)}
+          disabled={pageItems.length === 0}
+        >
+          {needle ? "取消结果" : "取消本类"}
         </button>
       </div>
 
       <div className="quick-list">
-        {commands.length > 0 && filtered.length === 0 && (
-          <div className="quick-empty">没有匹配的指令</div>
+        {commands.length > 0 && pageItems.length === 0 && (
+          <div className="quick-empty">
+            {needle ? "没有匹配的指令" : "这个分类还没有指令"}
+          </div>
         )}
 
-        {groups.map(({ category, items }) => {
-          const isCollapsed = !needle && collapsed.has(category);
-          const draft = draftFor(category);
-          return (
-            <div className="quick-group" key={category}>
-              <button
-                className="quick-group-header"
-                onClick={() => toggleCollapse(category)}
-                title={isCollapsed ? "展开" : "收起"}
+        {pageItems.map((command) => (
+          <div
+            className={`quick-item ${command.enabled ? "" : "disabled"}`}
+            key={command.id}
+            title={`双击载入到发送框｜分类：${categoryOf(command)}｜${
+              command.append === "global" ? "跟随发送框结尾" : `结尾 ${command.append}`
+            }`}
+            onDoubleClick={() => onLoad(command)}
+          >
+            <div className="quick-item-top">
+              <input
+                type="checkbox"
+                checked={command.enabled}
+                title="参与发送勾选 / 循环发送"
+                onChange={(e) => update(command.id, { enabled: e.target.checked })}
+              />
+              <select
+                className="quick-cat"
+                value={categoryOf(command)}
+                title="移动到分类"
+                onChange={(e) => {
+                  if (e.target.value === "__new__") {
+                    setNewCategoryFor(command.id);
+                    setNewCategoryName("");
+                    return;
+                  }
+                  update(command.id, { category: e.target.value });
+                }}
               >
-                <span className="group-arrow">{isCollapsed ? "▸" : "▾"}</span>
-                <span className="group-name">{category}</span>
-                <span className="group-count">{items.length}</span>
-              </button>
-
-              {!isCollapsed &&
-                items.map((command) => (
-                  <div
-                    className={`quick-item ${command.enabled ? "" : "disabled"}`}
-                    key={command.id}
-                    title={`双击载入到发送框｜分类：${categoryOf(command)}｜${
-                      command.append === "global" ? "跟随发送框结尾" : `结尾 ${command.append}`
-                    }`}
-                    onDoubleClick={() => onLoad(command)}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={command.enabled}
-                      title="参与“全部发送”"
-                      onChange={(e) => update(command.id, { enabled: e.target.checked })}
-                    />
-                    <select
-                      className="quick-cat"
-                      value={categoryOf(command)}
-                      title="移动到分类"
-                      onChange={(e) => {
-                        if (e.target.value === "__new__") {
-                          setNewCategoryFor(command.id);
-                          setNewCategoryName("");
-                          return;
-                        }
-                        update(command.id, { category: e.target.value });
-                      }}
-                    >
-                      {categoryNames.map((name) => (
-                        <option key={name} value={name}>
-                          {name}
-                        </option>
-                      ))}
-                      <option value="__new__">＋ 新建…</option>
-                    </select>
-                    <input
-                      className="quick-name"
-                      value={command.name}
-                      onChange={(e) => update(command.id, { name: e.target.value })}
-                      onDoubleClick={(e) => e.stopPropagation()}
-                      title="指令名称（可编辑）"
-                    />
-                    <input
-                      className="quick-data"
-                      value={command.data}
-                      spellCheck={false}
-                      onChange={(e) => update(command.id, { data: e.target.value })}
-                      onDoubleClick={(e) => e.stopPropagation()}
-                      title={`${command.data}\n\n可直接编辑；回车载入到发送框`}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          e.preventDefault();
-                          onLoad(command);
-                        }
-                      }}
-                    />
-                    {command.hex && (
-                      <span className="badge hex" title="HEX 发送">
-                        H
-                      </span>
-                    )}
-                    <span className="quick-delay-wrap" title="发送勾选时，本条发送后等待的时间">
-                      <input
-                        className="quick-delay"
-                        type="number"
-                        min={0}
-                        max={10000}
-                        step={50}
-                        value={command.delayMs ?? 0}
-                        aria-label="发送后延时（毫秒）"
-                        onDoubleClick={(e) => e.stopPropagation()}
-                        onChange={(e) => {
-                          const ms = Math.min(
-                            10000,
-                            Math.max(0, Math.floor(Number(e.target.value) || 0)),
-                          );
-                          update(command.id, { delayMs: ms });
-                        }}
-                      />
-                      <span>ms</span>
-                    </span>
-                    <button
-                      className="icon-btn"
-                      title="载入到发送框"
-                      onClick={() => onLoad(command)}
-                    >
-                      ↧
-                    </button>
-                    <button
-                      className="icon-btn"
-                      title="发送"
-                      disabled={!connected}
-                      onClick={() => onSend(command)}
-                    >
-                      ▶
-                    </button>
-                    <button
-                      className="icon-btn danger"
-                      title="删除"
-                      onClick={() => onChange(commands.filter((c) => c.id !== command.id))}
-                    >
-                      ×
-                    </button>
-                  </div>
+                {categoryNames.map((name) => (
+                  <option key={name} value={name}>
+                    {name}
+                  </option>
                 ))}
-
-              {!isCollapsed && !needle && (
-                <div className="quick-new">
-                  <span className="quick-new-plus">＋</span>
-                  <input
-                    ref={(element) => {
-                      draftNameRefs.current[category] = element;
-                    }}
-                    className="quick-name"
-                    value={draft.name}
-                    placeholder="新指令名称（可留空）"
-                    onChange={(e) => patchDraft(category, { name: e.target.value })}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        addDraft(category);
-                      }
-                    }}
-                  />
-                  <input
-                    className="quick-data quick-new-data"
-                    value={draft.data}
-                    spellCheck={false}
-                    placeholder="指令内容"
-                    onChange={(e) => patchDraft(category, { data: e.target.value })}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        addDraft(category);
-                      }
-                    }}
-                  />
-                  <button
-                    className="quick-new-add"
-                    disabled={!draft.data.trim()}
-                    onClick={() => addDraft(category)}
-                  >
-                    添加
-                  </button>
-                </div>
-              )}
+                <option value="__new__">＋ 新建…</option>
+              </select>
+              <input
+                className="quick-name"
+                value={command.name}
+                onChange={(e) => update(command.id, { name: e.target.value })}
+                onDoubleClick={(e) => e.stopPropagation()}
+                title="指令名称（可编辑）"
+              />
+              <span
+                className="quick-order-wrap"
+                title="循环发送序号：1、2、3… 相同序号按列表前后执行；0 不参与"
+              >
+                <span>#</span>
+                <input
+                  className="quick-order"
+                  type="number"
+                  min={0}
+                  max={9999}
+                  step={1}
+                  value={command.order ?? 0}
+                  aria-label="循环发送序号"
+                  onDoubleClick={(e) => e.stopPropagation()}
+                  onChange={(e) =>
+                    update(command.id, { order: clampNumber(e.target.value, 9999) })
+                  }
+                />
+              </span>
+              <button
+                type="button"
+                className={`quick-hex ${command.hex ? "active" : ""}`}
+                title={
+                  command.hex
+                    ? "当前按 HEX 发送，点击改为文本"
+                    : "当前按文本发送，点击改为 HEX"
+                }
+                onClick={() => update(command.id, { hex: !command.hex })}
+              >
+                HEX
+              </button>
+              <button
+                className="icon-btn"
+                title="载入到发送框"
+                onClick={() => onLoad(command)}
+              >
+                ↧
+              </button>
+              <button
+                className="icon-btn"
+                title="发送"
+                disabled={!connected}
+                onClick={() => onSend(command)}
+              >
+                ▶
+              </button>
+              <button
+                className="icon-btn danger"
+                title="删除"
+                onClick={() => onChange(commands.filter((c) => c.id !== command.id))}
+              >
+                ×
+              </button>
             </div>
-          );
-        })}
+            <div className="quick-item-sub">
+              <input
+                className={`quick-data ${command.hex ? "hex" : ""}`}
+                value={command.data}
+                spellCheck={false}
+                onChange={(e) => update(command.id, { data: e.target.value })}
+                onDoubleClick={(e) => e.stopPropagation()}
+                title={`${command.data}\n\n可直接编辑；回车载入到发送框`}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    onLoad(command);
+                  }
+                }}
+              />
+              <span className="quick-delay-wrap" title="发送完成后等待的时间">
+                <input
+                  className="quick-delay"
+                  type="number"
+                  min={0}
+                  max={10000}
+                  step={50}
+                  value={command.delayMs ?? 0}
+                  aria-label="发送后延时（毫秒）"
+                  onDoubleClick={(e) => e.stopPropagation()}
+                  onChange={(e) =>
+                    update(command.id, { delayMs: clampNumber(e.target.value, 10000) })
+                  }
+                />
+                <span>ms</span>
+              </span>
+            </div>
+          </div>
+        ))}
+
+        {!needle && (
+          <div className="quick-new">
+            <span className="quick-new-plus">＋</span>
+            <input
+              ref={(element) => {
+                draftNameRefs.current[currentCategory] = element;
+              }}
+              className="quick-name"
+              value={draftFor(currentCategory).name}
+              placeholder="新指令名称（可留空）"
+              onChange={(e) => patchDraft(currentCategory, { name: e.target.value })}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  addDraft(currentCategory);
+                }
+              }}
+            />
+            <input
+              className="quick-data quick-new-data"
+              value={draftFor(currentCategory).data}
+              spellCheck={false}
+              placeholder="指令内容（HEX 也可先添加再切换）"
+              onChange={(e) => patchDraft(currentCategory, { data: e.target.value })}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  addDraft(currentCategory);
+                }
+              }}
+            />
+            <button
+              className="quick-new-add"
+              disabled={!draftFor(currentCategory).data.trim()}
+              onClick={() => addDraft(currentCategory)}
+            >
+              添加
+            </button>
+          </div>
+        )}
       </div>
 
-      <div className="quick-hint">点分类标题折叠 · 行首分类可移动/新建 · 指令可直接编辑</div>
+      <div className="quick-hint">
+        左侧页签切换分类 · 序号 1 起循环，0 不参与 · 每行可切 HEX/文本
+      </div>
 
       {newCategoryFor && (
         <div

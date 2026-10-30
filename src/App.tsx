@@ -131,7 +131,7 @@ const DEFAULT_OPTIONS: DisplayOptions = {
   tagWidth: 48,
   funcWidth: 240,
   filterWidth: 220,
-  quickWidth: 340,
+  quickWidth: 440,
   sendHeight: 172,
 };
 
@@ -158,6 +158,7 @@ function loadOptions(): DisplayOptions {
     // EasyLog and 原始 are mutually exclusive. EasyLog parses/cleans ANSI;
     // 原始 keeps the stream untouched.
     merged.ansiRaw = !merged.elogMode;
+    if (merged.quickWidth < 420) merged.quickWidth = 440;
     if (localStorage.getItem("easylog.transport.v1") === "tcp") {
       merged.timestamp = false;
     }
@@ -354,6 +355,7 @@ export default function App() {
   const [searchToken, setSearchToken] = useState(0);
   const [textMenu, setTextMenu] = useState<TextMenuState | null>(null);
   const [logSelectAll, setLogSelectAll] = useState(false);
+  const [looping, setLooping] = useState(false);
 
   const [transport, setTransport] = useState<"serial" | "tcp">(() =>
     localStorage.getItem("easylog.transport.v1") === "tcp" ? "tcp" : "serial",
@@ -388,6 +390,9 @@ export default function App() {
   const pausedRef = useRef(paused);
   const connectedRef = useRef(connected);
   const logSelectAllRef = useRef(logSelectAll);
+  const loopRef = useRef(false);
+  const commandsRef = useRef(commands);
+  commandsRef.current = commands;
   const transportRef = useRef(transport);
   const tcpPortRef = useRef(tcpPort);
   const serialTimestampRef = useRef(options.timestamp);
@@ -701,6 +706,8 @@ export default function App() {
         if (!payload.connected) {
           setRecording(false);
           setTcpClients([]);
+          loopRef.current = false;
+          setLooping(false);
         }
       });
       offTcpClients = await bridge.onTcpClients((payload) => {
@@ -909,6 +916,7 @@ export default function App() {
       if (renderTimerRef.current !== null) window.clearTimeout(renderTimerRef.current);
       if (replayTimerRef.current !== null) window.clearTimeout(replayTimerRef.current);
       replayCancelledRef.current = true;
+      loopRef.current = false;
       void bridge.stopRecording().catch(() => {});
     };
   }, []);
@@ -984,6 +992,10 @@ export default function App() {
   }, [autoSend, connected, autoInterval, doSend]);
 
   const handleConnect = async () => {
+    if (loopRef.current) {
+      loopRef.current = false;
+      setLooping(false);
+    }
     if (transport === "tcp") {
       setBusy(true);
       stopReplay(true);
@@ -1069,6 +1081,10 @@ export default function App() {
   };
 
   const handleDisconnect = async () => {
+    if (loopRef.current) {
+      loopRef.current = false;
+      setLooping(false);
+    }
     if (transport === "tcp") {
       setBusy(true);
       try {
@@ -1298,6 +1314,69 @@ export default function App() {
         if (gap > 0) await delay(gap);
       }
     }
+  };
+
+  const stopLoop = () => {
+    if (!loopRef.current) return;
+    loopRef.current = false;
+    setLooping(false);
+    setStatus("循环发送已停止");
+  };
+
+  const startLoop = () => {
+    if (loopRef.current) return;
+    if (!connectedRef.current) {
+      setStatus("请先连接串口或启动 TCP Server");
+      return;
+    }
+    const eligible = commandsRef.current.filter(
+      (command) => command.enabled && (command.order ?? 0) > 0,
+    );
+    if (eligible.length === 0) {
+      setStatus("没有参与循环的指令：请勾选并设置序号 1 以上");
+      return;
+    }
+
+    loopRef.current = true;
+    setLooping(true);
+    setStatus(`循环发送中：${eligible.length} 条，按序号顺序`);
+    void (async () => {
+      while (loopRef.current) {
+        const ordered = commandsRef.current
+          .map((command, index) => ({ command, index }))
+          .filter(
+            ({ command }) => command.enabled && (command.order ?? 0) > 0,
+          )
+          .sort(
+            (a, b) =>
+              (a.command.order ?? 0) - (b.command.order ?? 0) ||
+              a.index - b.index,
+          )
+          .map(({ command }) => command);
+        if (ordered.length === 0) break;
+
+        for (const command of ordered) {
+          if (!loopRef.current || !connectedRef.current) {
+            loopRef.current = false;
+            break;
+          }
+          const ok = await doSend(
+            command.data,
+            command.hex,
+            resolveCommandAppend(command),
+          );
+          if (!ok) {
+            loopRef.current = false;
+            break;
+          }
+          const gap = Math.min(10000, Math.max(0, command.delayMs ?? 0));
+          if (gap > 0 && loopRef.current) await delay(gap);
+        }
+      }
+      loopRef.current = false;
+      setLooping(false);
+      if (connectedRef.current) setStatus("循环发送已停止");
+    })();
   };
 
   const importCommands = (text: string, filename: string) => {
@@ -1788,9 +1867,12 @@ export default function App() {
             commands={commands}
             connected={connected}
             width={options.quickWidth}
+            looping={looping}
             onChange={setCommands}
             onSend={(command) => void doSend(command.data, command.hex, resolveCommandAppend(command))}
             onSendAll={(list) => void sendAll(list)}
+            onStartLoop={startLoop}
+            onStopLoop={stopLoop}
             onLoad={(command) => {
               setSendText(command.data);
               setSendHex(command.hex);

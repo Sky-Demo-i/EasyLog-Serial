@@ -9,6 +9,7 @@ export interface ParsedCommand {
   enabled: boolean;
   category?: string;
   delayMs?: number;
+  order?: number;
 }
 
 export interface ParseResult {
@@ -192,6 +193,7 @@ export function parseCommandText(text: string): ParseResult {
           enabled: obj.enabled === undefined ? true : Boolean(obj.enabled),
           category: typeof obj.category === "string" ? obj.category : undefined,
           delayMs: Number(obj.delayMs) || undefined,
+          order: Number(obj.order) || undefined,
         });
       }
       if (commands.length === 0) warnings.push("JSON 中没有可用指令");
