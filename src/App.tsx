@@ -379,6 +379,7 @@ export default function App() {
   const partialRef = useRef("");
   const decoderRef = useRef<TextDecoder>(new TextDecoder("utf-8"));
   const textBufRef = useRef("");
+  const partialTimerRef = useRef<number | null>(null);
   const ansiCarryRef = useRef("");
   const hexBufRef = useRef<number[]>([]);
   const hexBaseRef = useRef(0);
@@ -483,6 +484,21 @@ export default function App() {
     }, 16);
   }, []);
 
+  const flushPartial = useCallback(() => {
+    if (partialTimerRef.current !== null) {
+      window.clearTimeout(partialTimerRef.current);
+      partialTimerRef.current = null;
+    }
+    const text = textBufRef.current;
+    if (!text) return;
+    textBufRef.current = "";
+    partialRef.current = "";
+    storeRef.current.push(
+      makeEntry(Date.now(), "rx", text, optionsRef.current.elogMode),
+    );
+    scheduleRender();
+  }, [scheduleRender]);
+
   function clearReconnectTimer() {
     if (reconnectTimerRef.current !== null) {
       window.clearTimeout(reconnectTimerRef.current);
@@ -549,6 +565,10 @@ export default function App() {
 
   const resetStream = useCallback((encoding?: Encoding) => {
     textBufRef.current = "";
+    if (partialTimerRef.current !== null) {
+      window.clearTimeout(partialTimerRef.current);
+      partialTimerRef.current = null;
+    }
     ansiCarryRef.current = "";
     hexBufRef.current = [];
     hexBaseRef.current = 0;
@@ -592,15 +612,25 @@ export default function App() {
       textBufRef.current = textBufRef.current.slice(65536);
     }
 
-    const parts = textBufRef.current.split("\n");
+    const parts = textBufRef.current.split(/\r\n|\n|\r/);
     textBufRef.current = parts.pop() ?? "";
     for (const part of parts) {
-      const line = part.endsWith("\r") ? part.slice(0, -1) : part;
-      if (line.length === 0) continue;
-      storeRef.current.push(makeEntry(ts, "rx", line, optionsRef.current.elogMode));
+      if (part.length === 0) continue;
+      storeRef.current.push(makeEntry(ts, "rx", part, optionsRef.current.elogMode));
     }
     partialRef.current = textBufRef.current;
-  }, []);
+
+    if (partialTimerRef.current !== null) {
+      window.clearTimeout(partialTimerRef.current);
+      partialTimerRef.current = null;
+    }
+    if (textBufRef.current) {
+      partialTimerRef.current = window.setTimeout(() => {
+        partialTimerRef.current = null;
+        flushPartial();
+      }, 120);
+    }
+  }, [flushPartial]);
 
   const ingestHex = useCallback((bytes: Uint8Array, ts: number) => {
     for (let i = 0; i < bytes.length; i++) hexBufRef.current.push(bytes[i]);
@@ -1005,6 +1035,10 @@ export default function App() {
       replayCancelledRef.current = true;
       loopRef.current = false;
       clearReconnectTimer();
+      if (partialTimerRef.current !== null) {
+        window.clearTimeout(partialTimerRef.current);
+        partialTimerRef.current = null;
+      }
       void bridge.stopRecording().catch(() => {});
     };
   }, []);

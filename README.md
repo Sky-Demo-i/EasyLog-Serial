@@ -1,6 +1,6 @@
 # EasyLog Serial
 
-EasyLogger 的配套串口工作台 · **lyg** · **v0.3.29**。Tauri 2 + React + Rust，Windows 10/11。
+EasyLogger 的配套串口工作台 · **lyg** · **v0.3.30**。Tauri 2 + React + Rust，Windows 10/11。
 
 ![界面预览（默认浅色，多分类同时展开）](docs/ui-v0318.png)
 
@@ -125,6 +125,7 @@ EasyLogger 的配套串口工作台 · **lyg** · **v0.3.29**。Tauri 2 + React 
 - 兼容 `D/tracker_misc (2415 jm_poweron_2min_bat_get) [up=76470][rst=0] AverVoltage:4280` 这类格式：
   - 解析出 Tag=`tracker_misc`、函数=`jm_poweron_2min_bat_get`、行号=`2415`
   - 函数后的**第一个 `[]`** 作为设备运行 tick，单独显示在 **TICK** 列；其余内容保留在消息列
+- 接收行同时识别 `CR`、`LF`、`CRLF`；设备连续回复但没有结束符时，静默 120ms 自动断行，避免多段回复挤在同一行
 - 选 **原始**：不解析字段，**原样打印**收到的文本（保留 ANSI 转义码），只显示时间 / 方向 / 消息
 - 切换模式会清空当前日志区，避免两种格式混在一起
 - 原始模式下左侧过滤栏隐藏 **级别 / Tag**，只保留关键字过滤和关键字着色规则
@@ -206,7 +207,7 @@ AT+CSQ
 
 ## 直接运行（免安装）
 
-免安装绿色版：[`release/EasyLog-Serial-0.3.29-portable.zip`](release/EasyLog-Serial-0.3.29-portable.zip)（约 2.0 MB）
+免安装绿色版：[`release/EasyLog-Serial-0.3.30-portable.zip`](release/EasyLog-Serial-0.3.30-portable.zip)（约 2.0 MB）
 
 - 解压到任意文件夹，双击 `EasyLogSerial.exe` 即可
 - 按住自定义标题栏空白处可拖动整个窗口；四边/四角可缩放
