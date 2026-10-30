@@ -1,7 +1,14 @@
 import type { PointerEvent as ReactPointerEvent } from "react";
 import type { DisplayOptions } from "../types";
 
-type ResizeKey = "timeWidth" | "tagWidth" | "funcWidth" | "lineWidth" | "tickWidth";
+type ResizeKey =
+  | "timeWidth"
+  | "dirWidth"
+  | "levelWidth"
+  | "tagWidth"
+  | "funcWidth"
+  | "lineWidth"
+  | "tickWidth";
 
 interface Props {
   options: DisplayOptions;
@@ -10,6 +17,8 @@ interface Props {
 
 const LIMITS: Record<ResizeKey, [number, number]> = {
   timeWidth: [70, 200],
+  dirWidth: [20, 80],
+  levelWidth: [18, 80],
   tagWidth: [40, 160],
   funcWidth: [80, 600],
   lineWidth: [24, 120],
@@ -19,8 +28,8 @@ const LIMITS: Record<ResizeKey, [number, number]> = {
 export default function LogHeader({ options, onResize }: Props) {
   const fontSize = options.logFontSize || 13;
   const timeWidth = Math.max(options.timeWidth, Math.ceil(fontSize * 8.4));
-  const dirWidth = Math.max(28, Math.ceil(fontSize * 2.4));
-  const levelWidth = Math.max(24, Math.ceil(fontSize * 1.55));
+  const dirWidth = Math.max(options.dirWidth ?? 32, Math.ceil(fontSize * 2.4));
+  const levelWidth = Math.max(options.levelWidth ?? 24, Math.ceil(fontSize * 1.55));
   const lineWidth = Math.max(options.lineWidth ?? 44, Math.ceil(fontSize * 2.6));
   const tickWidth = Math.max(options.tickWidth ?? 88, Math.ceil(fontSize * 6));
 
@@ -66,12 +75,12 @@ export default function LogHeader({ options, onResize }: Props) {
       )}
       {options.direction && (
         <span className="log-hcell" style={{ width: dirWidth }}>
-          向
+          向{resizer("dirWidth")}
         </span>
       )}
       {options.elogMode && (
         <span className="log-hcell" style={{ width: levelWidth }}>
-          级
+          级{resizer("levelWidth")}
         </span>
       )}
       {options.elogMode && (

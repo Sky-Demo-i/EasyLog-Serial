@@ -102,6 +102,8 @@ export interface DisplayOptions {
   timeWidth: number;
   tagWidth: number;
   funcWidth: number;
+  dirWidth: number;
+  levelWidth: number;
   lineWidth: number;
   tickWidth: number;
   filterWidth: number;

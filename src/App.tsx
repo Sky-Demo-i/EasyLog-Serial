@@ -130,6 +130,8 @@ const DEFAULT_OPTIONS: DisplayOptions = {
   timeWidth: 112,
   tagWidth: 48,
   funcWidth: 240,
+  dirWidth: 32,
+  levelWidth: 24,
   lineWidth: 44,
   tickWidth: 88,
   filterWidth: 220,
@@ -1125,9 +1127,7 @@ export default function App() {
       setBusy(true);
       stopReplay(true);
       try {
-        storeRef.current.clear();
         resetStream();
-        setStats({ rx: 0, tx: 0 });
         setRecording(false);
         setRecordPath("");
         setReplayName("");
@@ -1153,9 +1153,7 @@ export default function App() {
     setBusy(true);
     stopReplay(true);
     try {
-      storeRef.current.clear();
       resetStream();
-      setStats({ rx: 0, tx: 0 });
       setRecording(false);
       setRecordPath("");
       setReplayName("");

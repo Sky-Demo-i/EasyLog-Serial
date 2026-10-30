@@ -91,8 +91,8 @@ export default function LogView({
   const fontSize = options.logFontSize || 13;
   const rowHeight = Math.max(26, Math.round(fontSize * 2.2));
   const timeWidth = Math.max(options.timeWidth, Math.ceil(fontSize * 8.4));
-  const dirWidth = Math.max(28, Math.ceil(fontSize * 2.4));
-  const levelWidth = Math.max(24, Math.ceil(fontSize * 1.55));
+  const dirWidth = Math.max(options.dirWidth ?? 32, Math.ceil(fontSize * 2.4));
+  const levelWidth = Math.max(options.levelWidth ?? 24, Math.ceil(fontSize * 1.55));
   const lineWidth = Math.max(options.lineWidth ?? 44, Math.ceil(fontSize * 2.6));
   const tickWidth = Math.max(options.tickWidth ?? 88, Math.ceil(fontSize * 6));
 
