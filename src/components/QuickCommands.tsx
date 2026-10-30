@@ -36,6 +36,37 @@ function clampNumber(value: string, max: number): number {
   return Math.min(max, Math.max(0, Math.floor(Number(value) || 0)));
 }
 
+function compactHex(value: string): string {
+  return value.replace(/0x/gi, "").replace(/[\s,;:-]/g, "");
+}
+
+function looksLikeHex(value: string): boolean {
+  const compact = compactHex(value);
+  return compact.length > 0 && compact.length % 2 === 0 && /^[0-9a-f]+$/i.test(compact);
+}
+
+function normalizeHex(value: string): string {
+  return compactHex(value)
+    .match(/.{2}/g)
+    ?.map((part) => part.toUpperCase())
+    .join(" ") ?? "";
+}
+
+function textToHex(value: string): string {
+  return Array.from(new TextEncoder().encode(value))
+    .map((byte) => byte.toString(16).toUpperCase().padStart(2, "0"))
+    .join(" ");
+}
+
+function hexToText(value: string): string {
+  const compact = compactHex(value);
+  const bytes = new Uint8Array(compact.length / 2);
+  for (let index = 0; index < compact.length; index += 2) {
+    bytes[index / 2] = Number.parseInt(compact.slice(index, index + 2), 16);
+  }
+  return new TextDecoder().decode(bytes);
+}
+
 export default function QuickCommands({
   commands,
   connected,
@@ -84,6 +115,20 @@ export default function QuickCommands({
 
   const update = (id: string, patch: Partial<QuickCommand>) => {
     onChange(commands.map((command) => (command.id === id ? { ...command, ...patch } : command)));
+  };
+
+  const toggleHex = (command: QuickCommand) => {
+    if (command.hex) {
+      const data = looksLikeHex(command.data)
+        ? hexToText(command.data)
+        : command.data;
+      update(command.id, { hex: false, data });
+    } else {
+      const data = looksLikeHex(command.data)
+        ? normalizeHex(command.data)
+        : textToHex(command.data);
+      update(command.id, { hex: true, data });
+    }
   };
 
   const draftFor = (category: string): Draft => drafts[category] ?? EMPTY_DRAFT;
@@ -152,6 +197,7 @@ export default function QuickCommands({
     : filtered.filter((command) => categoryOf(command) === currentCategory);
 
   const enabledCommands = commands.filter((command) => command.enabled);
+  const pageEnabled = pageItems.filter((command) => command.enabled);
   const loopCount = enabledCommands.filter((command) => (command.order ?? 0) > 0).length;
 
   const selectPage = (enabled: boolean) => {
@@ -197,9 +243,9 @@ export default function QuickCommands({
           导出
         </button>
         <button
-          onClick={() => onSendAll(enabledCommands)}
-          disabled={!connected || enabledCommands.length === 0}
-          title="按列表顺序发送一次所有勾选指令"
+          onClick={() => onSendAll(pageEnabled)}
+          disabled={!connected || pageEnabled.length === 0}
+          title="按列表顺序发送当前分类页里勾选的指令"
         >
           发送勾选
         </button>
@@ -366,6 +412,22 @@ export default function QuickCommands({
                   }
                 />
               </span>
+              <span className="quick-delay-wrap" title="发送完成后等待的时间">
+                <input
+                  className="quick-delay"
+                  type="number"
+                  min={0}
+                  max={10000}
+                  step={50}
+                  value={command.delayMs ?? 0}
+                  aria-label="发送后延时（毫秒）"
+                  onDoubleClick={(e) => e.stopPropagation()}
+                  onChange={(e) =>
+                    update(command.id, { delayMs: clampNumber(e.target.value, 10000) })
+                  }
+                />
+                <span>ms</span>
+              </span>
               <button
                 type="button"
                 className={`quick-hex ${command.hex ? "active" : ""}`}
@@ -374,7 +436,7 @@ export default function QuickCommands({
                     ? "当前按 HEX 发送，点击改为文本"
                     : "当前按文本发送，点击改为 HEX"
                 }
-                onClick={() => update(command.id, { hex: !command.hex })}
+                onClick={() => toggleHex(command)}
               >
                 HEX
               </button>
@@ -416,22 +478,6 @@ export default function QuickCommands({
                   }
                 }}
               />
-              <span className="quick-delay-wrap" title="发送完成后等待的时间">
-                <input
-                  className="quick-delay"
-                  type="number"
-                  min={0}
-                  max={10000}
-                  step={50}
-                  value={command.delayMs ?? 0}
-                  aria-label="发送后延时（毫秒）"
-                  onDoubleClick={(e) => e.stopPropagation()}
-                  onChange={(e) =>
-                    update(command.id, { delayMs: clampNumber(e.target.value, 10000) })
-                  }
-                />
-                <span>ms</span>
-              </span>
             </div>
           </div>
         ))}
