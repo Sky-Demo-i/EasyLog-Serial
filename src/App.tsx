@@ -58,6 +58,49 @@ const CMDS_KEY = "easylog.commands.v1";
 const CONNECT_KEY = "easylog.connect.v1";
 const KEYWORD_COLORS_KEY = "easylog.keywordColors.v1";
 
+const EXAMPLE_COMMANDS: QuickCommand[] = [
+  {
+    id: "example-csq",
+    name: "查询信号",
+    data: "AT+CSQ",
+    hex: false,
+    append: "global",
+    enabled: true,
+    category: "示例",
+    delayMs: 100,
+  },
+  {
+    id: "example-version",
+    name: "查询版本",
+    data: "AT+CGMR",
+    hex: false,
+    append: "global",
+    enabled: true,
+    category: "示例",
+    delayMs: 100,
+  },
+  {
+    id: "example-log-on",
+    name: "打开日志",
+    data: "AT^GT_CM=LOG,255",
+    hex: false,
+    append: "global",
+    enabled: true,
+    category: "示例",
+    delayMs: 100,
+  },
+  {
+    id: "example-log-off",
+    name: "关闭日志",
+    data: "AT^GT_CM=LOG,0",
+    hex: false,
+    append: "global",
+    enabled: true,
+    category: "示例",
+    delayMs: 100,
+  },
+];
+
 const DEFAULT_CONFIG: SerialConfig = {
   portName: "",
   baudRate: 115200,
@@ -159,8 +202,10 @@ function loadKeywordRules(): KeywordColorRule[] {
   }
 }
 
-function loadCommands(): QuickCommand[] {  try {
+function loadCommands(): QuickCommand[] {
+  try {
     const raw = localStorage.getItem(CMDS_KEY);
+    if (!raw) return EXAMPLE_COMMANDS.map((command) => ({ ...command }));
     const parsed = raw ? JSON.parse(raw) : [];
     if (!Array.isArray(parsed)) return [];
     // Collapse duplicates from repeated imports (keep the newest entry per name).
@@ -1270,8 +1315,21 @@ export default function App() {
     setStatus(`已从 ${filename} 导入：新增 ${added}，更新 ${updated}${warning}`);
   };
 
-  const exportCommands = () => {
-    downloadText(`easylog-commands-${stamp()}.json`, serializeCommands(commands), "application/json");
+  const exportCommands = async () => {
+    const filename = `easylog-commands-${stamp()}.json`;
+    const content = serializeCommands(commands);
+    if (bridge.isTauri()) {
+      try {
+        const path = await bridge.exportCommands(content, filename);
+        setStatus(
+          path ? `已导出 ${commands.length} 条指令到 ${path}` : "已取消导出",
+        );
+      } catch (error) {
+        setStatus(`导出失败：${normalizeError(error)}`);
+      }
+      return;
+    }
+    downloadText(filename, content, "application/json");
     setStatus(`已导出 ${commands.length} 条指令`);
   };
 

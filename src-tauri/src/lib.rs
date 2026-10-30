@@ -110,6 +110,20 @@ fn tcp_write_port(state: tauri::State<'_, SerialManager>, data: String) -> Resul
 }
 
 #[tauri::command]
+fn export_commands(content: String, suggested_name: String) -> Result<Option<String>, String> {
+    let Some(path) = rfd::FileDialog::new()
+        .set_file_name(&suggested_name)
+        .add_filter("JSON", &["json"])
+        .save_file()
+    else {
+        return Ok(None);
+    };
+    std::fs::write(&path, content.as_bytes())
+        .map_err(|error| format!("写入导出文件失败: {error}"))?;
+    Ok(Some(path.to_string_lossy().into_owned()))
+}
+
+#[tauri::command]
 fn set_autosave(
     state: tauri::State<'_, SerialManager>,
     enabled: bool,
@@ -140,6 +154,7 @@ pub fn run() {
             stop_tcp_server,
             tcp_write_port,
             local_ip,
+            export_commands,
             set_autosave,
             autosave_info
         ])

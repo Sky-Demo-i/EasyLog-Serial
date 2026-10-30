@@ -134,6 +134,14 @@ export async function saveLogText(content: string, portName: string): Promise<st
   return invoke<string>("save_log_text", { content, portName });
 }
 
+export async function exportCommands(
+  content: string,
+  suggestedName: string,
+): Promise<string | null> {
+  if (!isTauri()) return null;
+  return invoke<string | null>("export_commands", { content, suggestedName });
+}
+
 export interface TcpClientsPayload {
   count: number;
   clients: string[];
