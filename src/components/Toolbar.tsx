@@ -8,9 +8,7 @@ import type {
   ThemeMode,
 } from "../types";
 
-const BAUD_RATES = [
-  9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600, 1000000, 1500000, 2000000,
-];
+const BAUD_RATES = [4800, 9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600];
 
 interface Props {
   ports: PortInfo[];
@@ -18,6 +16,7 @@ interface Props {
   connected: boolean;
   busy: boolean;
   transport: "serial" | "tcp";
+  waitingReconnect: boolean;
   tcpPort: number;
   tcpHost: string;
   tcpClients: number;
@@ -46,6 +45,7 @@ export default function Toolbar({
   connected,
   busy,
   transport,
+  waitingReconnect,
   tcpPort,
   tcpHost,
   tcpClients,
@@ -68,16 +68,27 @@ export default function Toolbar({
   onRefresh,
 }: Props) {
   const lock = connected || busy;
+  const portLock = lock || waitingReconnect;
   const [moreOpen, setMoreOpen] = useState(false);
+  const [baudOpen, setBaudOpen] = useState(false);
+  const [customBaud, setCustomBaud] = useState(false);
   const moreRef = useRef<HTMLDivElement>(null);
+  const baudRef = useRef<HTMLDivElement>(null);
+  const baudInputRef = useRef<HTMLInputElement>(null);
+  const showCustomBaud = customBaud || !BAUD_RATES.includes(config.baudRate);
 
   useEffect(() => {
-    if (!moreOpen) return;
+    if (!moreOpen && !baudOpen) return;
     const onPointerDown = (event: MouseEvent) => {
-      if (!moreRef.current?.contains(event.target as Node)) setMoreOpen(false);
+      const target = event.target as Node;
+      if (!moreRef.current?.contains(target)) setMoreOpen(false);
+      if (!baudRef.current?.contains(target)) setBaudOpen(false);
     };
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setMoreOpen(false);
+      if (event.key === "Escape") {
+        setMoreOpen(false);
+        setBaudOpen(false);
+      }
     };
     document.addEventListener("mousedown", onPointerDown);
     window.addEventListener("keydown", onKeyDown);
@@ -85,11 +96,17 @@ export default function Toolbar({
       document.removeEventListener("mousedown", onPointerDown);
       window.removeEventListener("keydown", onKeyDown);
     };
-  }, [moreOpen]);
+  }, [moreOpen, baudOpen]);
+
+  useEffect(() => {
+    if (!portLock) return;
+    setMoreOpen(false);
+    setBaudOpen(false);
+  }, [portLock]);
 
   const connect = () => {
     setMoreOpen(false);
-    if (connected) onDisconnect();
+    if (connected || waitingReconnect) onDisconnect();
     else onConnect();
   };
 
@@ -122,9 +139,14 @@ export default function Toolbar({
           <select
             value={config.portName}
             onChange={(e) => onConfigChange({ portName: e.target.value })}
-            disabled={lock}
+            disabled={portLock}
           >
             {ports.length === 0 && <option value="">未发现串口</option>}
+            {config.portName && !ports.some((p) => p.name === config.portName) && (
+              <option value={config.portName}>
+                {waitingReconnect ? `${config.portName}（等待回连）` : config.portName}
+              </option>
+            )}
             {ports.map((p) => (
               <option key={p.name} value={p.name}>
                 {p.name}
@@ -137,33 +159,90 @@ export default function Toolbar({
           ↻
         </button>
 
-        <label className="field baud-field">
+        <div className="field baud-field">
           <span>波特率</span>
-          <input
-            list="baud-rates"
-            type="number"
-            value={config.baudRate}
-            disabled={lock}
-            onChange={(e) => {
-              const value = Number(e.target.value);
-              if (Number.isFinite(value) && value > 0) {
-                onConfigChange({ baudRate: Math.floor(value) });
-              }
-            }}
-          />
-          <datalist id="baud-rates">
-            {BAUD_RATES.map((b) => (
-              <option key={b} value={b} />
-            ))}
-          </datalist>
-        </label>
+          <div className="baud-picker" ref={baudRef}>
+            <button
+              type="button"
+              className={`baud-trigger ${baudOpen ? "active" : ""}`}
+              disabled={portLock}
+              onClick={() => setBaudOpen((value) => !value)}
+              aria-haspopup="listbox"
+              aria-expanded={baudOpen}
+              title="常用波特率 4800–921600；其他速率选“自定义…”"
+            >
+              {config.baudRate}
+              <span className="more-caret">{baudOpen ? "▴" : "▾"}</span>
+            </button>
+            {baudOpen && (
+              <div className="baud-popover" role="listbox" aria-label="波特率">
+                {BAUD_RATES.map((rate) => (
+                  <button
+                    type="button"
+                    key={rate}
+                    role="option"
+                    aria-selected={!showCustomBaud && config.baudRate === rate}
+                    className={
+                      !showCustomBaud && config.baudRate === rate ? "active" : ""
+                    }
+                    onClick={() => {
+                      setCustomBaud(false);
+                      setBaudOpen(false);
+                      onConfigChange({ baudRate: rate });
+                    }}
+                  >
+                    {rate}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={showCustomBaud}
+                  className={showCustomBaud ? "active" : ""}
+                  onClick={() => {
+                    setCustomBaud(true);
+                    setBaudOpen(false);
+                    window.setTimeout(() => baudInputRef.current?.focus(), 0);
+                  }}
+                >
+                  自定义…
+                </button>
+              </div>
+            )}
+          </div>
+          {showCustomBaud && (
+            <input
+              className="baud-custom"
+              type="number"
+              min={1}
+              ref={baudInputRef}
+              value={config.baudRate}
+              disabled={portLock}
+              onChange={(e) => {
+                const value = Number(e.target.value);
+                if (Number.isFinite(value) && value > 0) {
+                  onConfigChange({ baudRate: Math.floor(value) });
+                }
+              }}
+              title="自定义波特率"
+            />
+          )}
+        </div>
 
         <button
-          className={`connect-btn ${connected ? "on" : ""}`}
+          className={`connect-btn ${connected ? "on" : ""} ${
+            waitingReconnect ? "waiting" : ""
+          }`}
           onClick={connect}
           disabled={busy || (!connected && !config.portName)}
         >
-          {busy ? "处理中…" : connected ? "断开" : "连接"}
+          {busy
+            ? "处理中…"
+            : connected
+              ? "断开"
+              : waitingReconnect
+                ? "取消回连"
+                : "连接"}
         </button>
 
         <div className="serial-more" ref={moreRef}>
@@ -193,7 +272,7 @@ export default function Toolbar({
                   <span>数据位</span>
                   <select
                     value={config.dataBits}
-                    disabled={lock}
+                    disabled={portLock}
                     onChange={(e) => onConfigChange({ dataBits: Number(e.target.value) })}
                   >
                     {[5, 6, 7, 8].map((n) => (
@@ -208,7 +287,7 @@ export default function Toolbar({
                   <span>校验</span>
                   <select
                     value={config.parity}
-                    disabled={lock}
+                    disabled={portLock}
                     onChange={(e) =>
                       onConfigChange({ parity: e.target.value as Parity })
                     }
@@ -223,7 +302,7 @@ export default function Toolbar({
                   <span>停止位</span>
                   <select
                     value={config.stopBits}
-                    disabled={lock}
+                    disabled={portLock}
                     onChange={(e) =>
                       onConfigChange({ stopBits: Number(e.target.value) })
                     }
@@ -237,7 +316,7 @@ export default function Toolbar({
                   <span>流控</span>
                   <select
                     value={config.flowControl}
-                    disabled={lock}
+                    disabled={portLock}
                     onChange={(e) =>
                       onConfigChange({
                         flowControl: e.target.value as SerialConfig["flowControl"],
@@ -255,7 +334,7 @@ export default function Toolbar({
                   <input
                     type="checkbox"
                     checked={config.dtr}
-                    disabled={lock}
+                    disabled={portLock}
                     onChange={(e) => onConfigChange({ dtr: e.target.checked })}
                   />
                   DTR
@@ -264,7 +343,7 @@ export default function Toolbar({
                   <input
                     type="checkbox"
                     checked={config.rts}
-                    disabled={lock}
+                    disabled={portLock}
                     onChange={(e) => onConfigChange({ rts: e.target.checked })}
                   />
                   RTS

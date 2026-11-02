@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildPayload,
-  formatHexRow,
+  formatHexFrame,
   parseEscapes,
   parseHexInput,
   stripAnsi,
@@ -50,12 +50,20 @@ describe("buildPayload", () => {
   });
 });
 
-describe("formatHexRow", () => {
-  it("formats offset, hex and ascii", () => {
-    const row = formatHexRow([0x01, 0x41, 0x7f], 0x10);
-    expect(row).toContain("00000010");
-    expect(row).toContain("01 41 7F");
-    expect(row).toContain("|.A.");
+describe("formatHexFrame", () => {
+  it("formats one frame as uppercase hex on a single line", () => {
+    expect(formatHexFrame([0x01, 0x03, 0x00, 0xab])).toBe("01 03 00 AB");
+  });
+
+  it("keeps long frames on one line", () => {
+    const bytes = Array.from({ length: 20 }, (_, index) => index);
+    expect(formatHexFrame(bytes)).toBe(
+      "00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F 10 11 12 13",
+    );
+  });
+
+  it("returns an empty string for an empty frame", () => {
+    expect(formatHexFrame([])).toBe("");
   });
 });
 

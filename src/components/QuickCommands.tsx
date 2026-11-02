@@ -1,13 +1,27 @@
-import { useRef, useState } from "react";
-import type { PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useRef, useState } from "react";
+import type {
+  MouseEvent as ReactMouseEvent,
+  PointerEvent as ReactPointerEvent,
+} from "react";
 import type { QuickCommand } from "../types";
+import {
+  collectCategories,
+  deleteCategory as removeCategory,
+  moveCategory as reorderCategories,
+  renameCategory,
+  UNCATEGORIZED_CATEGORY,
+} from "../lib/commands";
 
 interface Props {
   commands: QuickCommand[];
   connected: boolean;
   width: number;
   looping: boolean;
+  categories: string[];
+  categoryOrder: string[];
   onChange: (commands: QuickCommand[]) => void;
+  onCategoriesChange: (categories: string[]) => void;
+  onCategoryOrderChange: (order: string[]) => void;
   onSend: (command: QuickCommand) => void;
   onSendAll: (commands: QuickCommand[]) => void;
   onStartLoop: () => void;
@@ -18,7 +32,7 @@ interface Props {
   onWidthChange: (width: number) => void;
 }
 
-const UNCATEGORIZED = "未分类";
+const UNCATEGORIZED = UNCATEGORIZED_CATEGORY;
 const AT_PREFIX = "AT^GT_CM=";
 
 interface Draft {
@@ -72,7 +86,11 @@ export default function QuickCommands({
   connected,
   width,
   looping,
+  categories,
+  categoryOrder,
   onChange,
+  onCategoriesChange,
+  onCategoryOrderChange,
   onSend,
   onSendAll,
   onStartLoop,
@@ -85,10 +103,45 @@ export default function QuickCommands({
   const fileRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState("");
   const [activeCategory, setActiveCategory] = useState("");
-  const [newCategoryFor, setNewCategoryFor] = useState<string | null>(null);
-  const [newCategoryName, setNewCategoryName] = useState("");
+  const [categoryDialog, setCategoryDialog] = useState<
+    | { kind: "move"; commandId: string }
+    | { kind: "create" }
+    | { kind: "rename"; from: string }
+    | null
+  >(null);
+  const [categoryName, setCategoryName] = useState("");
+  const [deleteCategory, setDeleteCategory] = useState<string | null>(null);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [dropTarget, setDropTarget] = useState<{
+    id: string;
+    after: boolean;
+  } | null>(null);
+  const [tabMenu, setTabMenu] = useState<{
+    x: number;
+    y: number;
+    category: string;
+  } | null>(null);
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
   const draftNameRefs = useRef<Record<string, HTMLInputElement | null>>({});
+  const activeTabRef = useRef<HTMLButtonElement | null>(null);
+  const quickListRef = useRef<HTMLDivElement>(null);
+  const draggingIdRef = useRef<string | null>(null);
+  const dragScrollDirRef = useRef(0);
+  const dragScrollRafRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!tabMenu) return;
+    const close = () => setTabMenu(null);
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setTabMenu(null);
+    };
+    document.addEventListener("pointerdown", close);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", close);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [tabMenu]);
 
   const startResize = (event: ReactPointerEvent) => {
     event.preventDefault();
@@ -166,21 +219,23 @@ export default function QuickCommands({
     requestAnimationFrame(() => draftNameRefs.current[category]?.focus());
   };
 
-  const categoryNames = Array.from(new Set(commands.map(categoryOf)));
-  if (categoryNames.length === 0) categoryNames.push(UNCATEGORIZED);
-  categoryNames.sort((a, b) =>
-    a === UNCATEGORIZED ? -1 : b === UNCATEGORIZED ? 1 : a.localeCompare(b, "zh-CN"),
-  );
+  const categoryNames = collectCategories(categories, commands, categoryOrder);
 
   const categoryCounts = new Map<string, number>();
   for (const command of commands) {
     const category = categoryOf(command);
     categoryCounts.set(category, (categoryCounts.get(category) ?? 0) + 1);
   }
+  const deleteCount = deleteCategory ? categoryCounts.get(deleteCategory) ?? 0 : 0;
+  const menuIndex = tabMenu ? categoryNames.indexOf(tabMenu.category) : -1;
 
   const currentCategory = categoryNames.includes(activeCategory)
     ? activeCategory
     : categoryNames[0];
+
+  useEffect(() => {
+    activeTabRef.current?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [currentCategory]);
 
   const needle = query.trim().toLowerCase();
   const filtered = commands.filter((command) => {
@@ -214,6 +269,78 @@ export default function QuickCommands({
     if (looping) onStopLoop();
   };
 
+  const stopDragScroll = () => {
+    dragScrollDirRef.current = 0;
+    if (dragScrollRafRef.current !== null) {
+      window.cancelAnimationFrame(dragScrollRafRef.current);
+      dragScrollRafRef.current = null;
+    }
+  };
+
+  const updateDragScroll = (clientY: number) => {
+    const list = quickListRef.current;
+    if (!list) return;
+    const rect = list.getBoundingClientRect();
+    const edge = 42;
+    let direction = 0;
+    if (clientY < rect.top + edge) direction = -1;
+    else if (clientY > rect.bottom - edge) direction = 1;
+    if (dragScrollDirRef.current === direction) return;
+    dragScrollDirRef.current = direction;
+    if (direction === 0) {
+      if (dragScrollRafRef.current !== null) {
+        window.cancelAnimationFrame(dragScrollRafRef.current);
+        dragScrollRafRef.current = null;
+      }
+      return;
+    }
+    if (dragScrollRafRef.current !== null) return;
+    const tick = () => {
+      const current = dragScrollDirRef.current;
+      if (current === 0) {
+        dragScrollRafRef.current = null;
+        return;
+      }
+      list.scrollTop += current * 16;
+      dragScrollRafRef.current = window.requestAnimationFrame(tick);
+    };
+    dragScrollRafRef.current = window.requestAnimationFrame(tick);
+  };
+
+  const clearDrag = () => {
+    draggingIdRef.current = null;
+    setDraggingId(null);
+    setDropTarget(null);
+    stopDragScroll();
+  };
+
+  const reorderCommand = (dragId: string, targetId: string, after: boolean) => {
+    const dragged = commands.find((command) => command.id === dragId);
+    const target = commands.find((command) => command.id === targetId);
+    if (!dragged || !target || dragged.id === target.id) return;
+    if (categoryOf(dragged) !== categoryOf(target)) return;
+    const rest = commands.filter((command) => command.id !== dragId);
+    const targetIndex = rest.findIndex((command) => command.id === targetId);
+    if (targetIndex < 0) return;
+    rest.splice(targetIndex + (after ? 1 : 0), 0, dragged);
+    onChange(rest);
+  };
+
+  const moveCommandToEdge = (command: QuickCommand, edge: "top" | "bottom") => {
+    const category = categoryOf(command);
+    const rest = commands.filter((item) => item.id !== command.id);
+    const categoryItems = rest.filter((item) => categoryOf(item) === category);
+    if (categoryItems.length === 0) return;
+    const insertAt =
+      edge === "top"
+        ? rest.findIndex((item) => categoryOf(item) === category)
+        : rest.findIndex(
+            (item) => item.id === categoryItems[categoryItems.length - 1].id,
+          ) + 1;
+    rest.splice(insertAt, 0, command);
+    onChange(rest);
+  };
+
   const moveCommand = (command: QuickCommand, delta: number) => {
     const category = categoryOf(command);
     const ids = commands
@@ -222,31 +349,115 @@ export default function QuickCommands({
     const from = ids.indexOf(command.id);
     const to = from + delta;
     if (from < 0 || to < 0 || to >= ids.length) return;
-    const targetId = ids[to];
-    const fromIndex = commands.findIndex((item) => item.id === command.id);
-    const targetIndex = commands.findIndex((item) => item.id === targetId);
-    if (fromIndex < 0 || targetIndex < 0) return;
-    const next = [...commands];
-    [next[fromIndex], next[targetIndex]] = [next[targetIndex], next[fromIndex]];
-    onChange(next);
+    reorderCommand(command.id, ids[to], delta > 0);
   };
 
-  const canMoveCommand = (command: QuickCommand, delta: number) => {
-    const ids = commands
-      .filter((item) => categoryOf(item) === categoryOf(command))
-      .map((item) => item.id);
-    const index = ids.indexOf(command.id);
-    const target = index + delta;
-    return index >= 0 && target >= 0 && target < ids.length;
+  useEffect(() => () => stopDragScroll(), []);
+
+  const openCategoryDialog = (
+    mode:
+      | { kind: "move"; commandId: string }
+      | { kind: "create" }
+      | { kind: "rename"; from: string },
+  ) => {
+    setCategoryDialog(mode);
+    setCategoryName(mode.kind === "rename" ? mode.from : "");
   };
 
-  const confirmNewCategory = () => {
-    const name = newCategoryName.trim();
-    if (!name || !newCategoryFor) return;
-    update(newCategoryFor, { category: name });
+  const closeCategoryDialog = () => {
+    setCategoryDialog(null);
+    setCategoryName("");
+  };
+
+  const confirmCategoryDialog = () => {
+    const name = categoryName.trim();
+    if (!name || !categoryDialog) return;
+
+    if (categoryDialog.kind === "rename") {
+      const from = categoryDialog.from;
+      if (name === from) {
+        closeCategoryDialog();
+        return;
+      }
+      const result = renameCategory(commands, categories, from, name);
+      onCategoriesChange(result.categories);
+      onChange(result.commands);
+      if (categoryOrder.length > 0) {
+        onCategoryOrderChange(
+          Array.from(
+            new Set(categoryNames.map((item) => (item === from ? name : item))),
+          ),
+        );
+      }
+      setDrafts((prev) => {
+        if (!(from in prev)) return prev;
+        const { [from]: draft, ...rest } = prev;
+        return { ...rest, [name]: draft };
+      });
+      setActiveCategory(name);
+      setQuery("");
+      closeCategoryDialog();
+      return;
+    }
+
+    if (!categoryNames.includes(name)) {
+      onCategoriesChange([...categories, name]);
+      if (categoryOrder.length > 0) {
+        onCategoryOrderChange([...categoryNames, name]);
+      }
+    }
+    if (categoryDialog.kind === "move") {
+      update(categoryDialog.commandId, { category: name });
+    }
     setActiveCategory(name);
-    setNewCategoryFor(null);
-    setNewCategoryName("");
+    setQuery("");
+    closeCategoryDialog();
+  };
+
+  const openDeleteCategory = (name: string) => {
+    if (name === UNCATEGORIZED) return;
+    setTabMenu(null);
+    setDeleteCategory(name);
+  };
+
+  const confirmDeleteCategory = (removeCommands: boolean) => {
+    const name = deleteCategory;
+    if (!name) return;
+    const result = removeCategory(
+      commands,
+      categories,
+      name,
+      removeCommands ? "remove" : "move",
+    );
+    onChange(result.commands);
+    onCategoriesChange(result.categories);
+    if (categoryOrder.length > 0) {
+      onCategoryOrderChange(categoryNames.filter((item) => item !== name));
+    }
+    setDrafts((prev) => {
+      if (!(name in prev)) return prev;
+      const next = { ...prev };
+      delete next[name];
+      return next;
+    });
+    if (currentCategory === name) setActiveCategory(UNCATEGORIZED);
+    setQuery("");
+    setDeleteCategory(null);
+  };
+
+  const openTabMenu = (event: ReactMouseEvent, category: string) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setTabMenu({
+      x: Math.min(event.clientX, window.innerWidth - 210),
+      y: Math.min(event.clientY, window.innerHeight - 230),
+      category,
+    });
+  };
+
+  const shiftCategory = (name: string, delta: number) => {
+    const next = reorderCategories(categoryNames, name, delta);
+    if (next !== categoryNames) onCategoryOrderChange(next);
   };
 
   return (
@@ -328,16 +539,23 @@ export default function QuickCommands({
         )}
       </div>
 
-      <div className="quick-tabs" role="tablist" aria-label="指令分类">
+      <div
+        className="quick-tabs"
+        role="tablist"
+        aria-label="指令分类"
+        onContextMenu={(event) => openTabMenu(event, currentCategory)}
+      >
         {categoryNames.map((category) => (
           <button
             key={category}
             type="button"
             role="tab"
+            ref={!needle && category === currentCategory ? activeTabRef : undefined}
             aria-selected={!needle && category === currentCategory}
             className={`quick-tab ${!needle && category === currentCategory ? "active" : ""}`}
             onClick={() => setActiveCategory(category)}
-            title={category}
+            onContextMenu={(event) => openTabMenu(event, category)}
+            title={`${category}｜右击可排序、重命名或删除分类`}
           >
             <span>{category}</span>
             <small>{categoryCounts.get(category) ?? 0}</small>
@@ -345,7 +563,10 @@ export default function QuickCommands({
         ))}
       </div>
 
-      <div className="quick-page-bar">
+      <div
+        className="quick-page-bar"
+        onContextMenu={(event) => openTabMenu(event, currentCategory)}
+      >
         <span className="quick-page-title">
           {needle ? "搜索结果" : currentCategory}
         </span>
@@ -369,7 +590,7 @@ export default function QuickCommands({
         </button>
       </div>
 
-      <div className="quick-list">
+      <div className="quick-list" ref={quickListRef}>
         {commands.length > 0 && pageItems.length === 0 && (
           <div className="quick-empty">
             {needle ? "没有匹配的指令" : "这个分类还没有指令"}
@@ -378,12 +599,46 @@ export default function QuickCommands({
 
         {pageItems.map((command) => (
           <div
-            className={`quick-item ${command.enabled ? "" : "disabled"}`}
+            className={`quick-item ${command.enabled ? "" : "disabled"} ${
+              draggingId === command.id ? "dragging" : ""
+            } ${
+              dropTarget?.id === command.id
+                ? dropTarget.after
+                  ? "drop-after"
+                  : "drop-before"
+                : ""
+            }`}
             key={command.id}
             title={`双击载入到发送框｜分类：${categoryOf(command)}｜${
               command.append === "global" ? "跟随发送框结尾" : `结尾 ${command.append}`
             }`}
             onDoubleClick={() => onLoad(command)}
+            onDragOver={(e) => {
+              const dragId = draggingIdRef.current;
+              if (!dragId) return;
+              const dragged = commands.find((item) => item.id === dragId);
+              if (!dragged || categoryOf(dragged) !== categoryOf(command)) return;
+              e.preventDefault();
+              e.dataTransfer.dropEffect = "move";
+              updateDragScroll(e.clientY);
+              const rect = e.currentTarget.getBoundingClientRect();
+              setDropTarget({
+                id: command.id,
+                after: e.clientY > rect.top + rect.height / 2,
+              });
+            }}
+            onDrop={(e) => {
+              const dragId = draggingIdRef.current;
+              if (!dragId) return;
+              e.preventDefault();
+              const rect = e.currentTarget.getBoundingClientRect();
+              reorderCommand(
+                dragId,
+                command.id,
+                e.clientY > rect.top + rect.height / 2,
+              );
+              clearDrag();
+            }}
           >
             <div className="quick-item-top">
               <input
@@ -398,8 +653,7 @@ export default function QuickCommands({
                 title="移动到分类"
                 onChange={(e) => {
                   if (e.target.value === "__new__") {
-                    setNewCategoryFor(command.id);
-                    setNewCategoryName("");
+                    openCategoryDialog({ kind: "move", commandId: command.id });
                     return;
                   }
                   update(command.id, { category: e.target.value });
@@ -488,27 +742,38 @@ export default function QuickCommands({
               >
                 ×
               </button>
-              <span className="quick-move-group">
-                <button
-                  type="button"
-                  className="quick-move"
-                  title="上移"
-                  disabled={!canMoveCommand(command, -1)}
-                  onDoubleClick={(e) => e.stopPropagation()}
-                  onClick={() => moveCommand(command, -1)}
-                >
-                  ▲
-                </button>
-                <button
-                  type="button"
-                  className="quick-move"
-                  title="下移"
-                  disabled={!canMoveCommand(command, 1)}
-                  onDoubleClick={(e) => e.stopPropagation()}
-                  onClick={() => moveCommand(command, 1)}
-                >
-                  ▼
-                </button>
+              <span
+                className="quick-drag"
+                draggable
+                tabIndex={0}
+                title="拖动排序；Alt+↑/↓ 微调，Ctrl+Home/End 置顶/置底"
+                onDragStart={(e) => {
+                  draggingIdRef.current = command.id;
+                  setDraggingId(command.id);
+                  setDropTarget(null);
+                  e.dataTransfer.effectAllowed = "move";
+                  e.dataTransfer.setData("text/plain", command.id);
+                  const row = e.currentTarget.closest(".quick-item");
+                  if (row) e.dataTransfer.setDragImage(row, 24, 12);
+                }}
+                onDragEnd={clearDrag}
+                onKeyDown={(e) => {
+                  if (e.altKey && e.key === "ArrowUp") {
+                    e.preventDefault();
+                    moveCommand(command, -1);
+                  } else if (e.altKey && e.key === "ArrowDown") {
+                    e.preventDefault();
+                    moveCommand(command, 1);
+                  } else if (e.ctrlKey && e.key === "Home") {
+                    e.preventDefault();
+                    moveCommandToEdge(command, "top");
+                  } else if (e.ctrlKey && e.key === "End") {
+                    e.preventDefault();
+                    moveCommandToEdge(command, "bottom");
+                  }
+                }}
+              >
+                ⋮⋮
               </span>
             </div>
             <div className="quick-item-sub">
@@ -529,6 +794,31 @@ export default function QuickCommands({
             </div>
           </div>
         ))}
+
+        {draggingId && (
+          <div
+            className={`quick-drop-tail ${
+              dropTarget?.id === "__tail__" ? "active" : ""
+            }`}
+            onDragOver={(e) => {
+              if (!draggingIdRef.current) return;
+              e.preventDefault();
+              e.dataTransfer.dropEffect = "move";
+              updateDragScroll(e.clientY);
+              setDropTarget({ id: "__tail__", after: true });
+            }}
+            onDrop={(e) => {
+              const dragId = draggingIdRef.current;
+              if (!dragId) return;
+              e.preventDefault();
+              const dragged = commands.find((item) => item.id === dragId);
+              if (dragged) moveCommandToEdge(dragged, "bottom");
+              clearDrag();
+            }}
+          >
+            拖到这里移到本类末尾
+          </div>
+        )}
 
         {!needle && (
           <div className="quick-new">
@@ -573,33 +863,135 @@ export default function QuickCommands({
       </div>
 
       <div className="quick-hint">
-        左侧页签切换分类 · 序号 1 起循环，0 不参与 · 每行可切 HEX/文本
+        左侧页签切换分类 · 拖动行尾 ⋮⋮ 排序（Alt+↑↓ 微调，Ctrl+Home/End 置顶/置底） · 序号 1 起循环，0 不参与
       </div>
 
-      {newCategoryFor && (
-        <div
-          className="quick-modal-backdrop"
-          onPointerDown={() => setNewCategoryFor(null)}
-        >
+      {categoryDialog && (
+        <div className="quick-modal-backdrop" onPointerDown={closeCategoryDialog}>
           <div className="quick-modal" onPointerDown={(e) => e.stopPropagation()}>
-            <div className="quick-modal-title">新建分类</div>
+            <div className="quick-modal-title">
+              {categoryDialog.kind === "rename" ? "重命名分类" : "新建分类"}
+            </div>
             <input
               autoFocus
-              value={newCategoryName}
-              placeholder="例如：网络、日志、查询"
-              onChange={(e) => setNewCategoryName(e.target.value)}
+              value={categoryName}
+              placeholder={
+                categoryDialog.kind === "rename"
+                  ? "输入新的分类名"
+                  : "例如：网络、日志、查询"
+              }
+              onChange={(e) => setCategoryName(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === "Enter") confirmNewCategory();
-                if (e.key === "Escape") setNewCategoryFor(null);
+                if (e.key === "Enter") confirmCategoryDialog();
+                if (e.key === "Escape") closeCategoryDialog();
               }}
             />
             <div className="quick-modal-actions">
-              <button onClick={confirmNewCategory} disabled={!newCategoryName.trim()}>
+              <button onClick={confirmCategoryDialog} disabled={!categoryName.trim()}>
                 确定
               </button>
-              <button onClick={() => setNewCategoryFor(null)}>取消</button>
+              <button onClick={closeCategoryDialog}>取消</button>
             </div>
           </div>
+        </div>
+      )}
+
+      {deleteCategory && (
+        <div
+          className="quick-modal-backdrop"
+          onPointerDown={() => setDeleteCategory(null)}
+        >
+          <div
+            className="quick-modal quick-modal-wide"
+            onPointerDown={(e) => e.stopPropagation()}
+          >
+            <div className="quick-modal-title">删除分类「{deleteCategory}」</div>
+            <div className="quick-modal-note">
+              {deleteCount > 0
+                ? `该分类下有 ${deleteCount} 条指令。可以把它们移到“未分类”，或连同分类一起删除。`
+                : "该分类为空，删除后不可恢复。"}
+            </div>
+            <div className="quick-modal-actions">
+              {deleteCount > 0 && (
+                <button onClick={() => confirmDeleteCategory(false)}>移到未分类</button>
+              )}
+              <button className="danger" onClick={() => confirmDeleteCategory(true)}>
+                {deleteCount > 0 ? "连同指令删除" : "删除分类"}
+              </button>
+              <button onClick={() => setDeleteCategory(null)}>取消</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {tabMenu && (
+        <div
+          className="quick-tab-menu"
+          style={{ left: tabMenu.x, top: tabMenu.y }}
+          onPointerDown={(event) => event.stopPropagation()}
+        >
+          <div className="quick-tab-menu-head" title={tabMenu.category}>
+            {tabMenu.category}
+            {tabMenu.category === UNCATEGORIZED ? "（默认）" : ""}
+          </div>
+          <button
+            type="button"
+            disabled={menuIndex <= 0}
+            title="把这个分类向左移动"
+            onClick={() => shiftCategory(tabMenu.category, -1)}
+          >
+            ← 左移
+          </button>
+          <button
+            type="button"
+            disabled={menuIndex < 0 || menuIndex >= categoryNames.length - 1}
+            title="把这个分类向右移动"
+            onClick={() => shiftCategory(tabMenu.category, 1)}
+          >
+            右移 →
+          </button>
+          <span className="quick-tab-menu-sep" />
+          <button
+            type="button"
+            disabled={tabMenu.category === UNCATEGORIZED}
+            title={
+              tabMenu.category === UNCATEGORIZED
+                ? "默认分类不可重命名"
+                : "重命名这个分类"
+            }
+            onClick={() => {
+              const category = tabMenu.category;
+              setTabMenu(null);
+              if (category !== UNCATEGORIZED) {
+                openCategoryDialog({ kind: "rename", from: category });
+              }
+            }}
+          >
+            重命名分类
+          </button>
+          <button
+            type="button"
+            className="danger"
+            disabled={tabMenu.category === UNCATEGORIZED}
+            title={
+              tabMenu.category === UNCATEGORIZED
+                ? "默认分类不可删除"
+                : "删除这个分类"
+            }
+            onClick={() => openDeleteCategory(tabMenu.category)}
+          >
+            删除分类
+          </button>
+          <span className="quick-tab-menu-sep" />
+          <button
+            type="button"
+            onClick={() => {
+              setTabMenu(null);
+              openCategoryDialog({ kind: "create" });
+            }}
+          >
+            ＋ 新建分类页
+          </button>
         </div>
       )}
     </aside>

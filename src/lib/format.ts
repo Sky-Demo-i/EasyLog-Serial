@@ -98,20 +98,13 @@ export function buildPayload(text: string, hex: boolean, append: AppendMode): Ui
   return out;
 }
 
-export function formatHexRow(bytes: ArrayLike<number>, offset: number): string {
+/** One protocol frame on one line: `01 03 00 00 00 01 84 0A`. */
+export function formatHexFrame(bytes: ArrayLike<number>): string {
   const hex: string[] = [];
   for (let i = 0; i < bytes.length; i++) {
     hex.push(bytes[i].toString(16).toUpperCase().padStart(2, "0"));
   }
-  const left = hex.slice(0, 8).join(" ").padEnd(23, " ");
-  const right = hex.slice(8, 16).join(" ").padEnd(23, " ");
-  let ascii = "";
-  for (let i = 0; i < bytes.length; i++) {
-    const b = bytes[i];
-    ascii += b >= 0x20 && b < 0x7f ? String.fromCharCode(b) : ".";
-  }
-  const addr = offset.toString(16).toUpperCase().padStart(8, "0");
-  return `${addr}  ${left}  ${right}  |${ascii.padEnd(16, " ")}|`;
+  return hex.join(" ");
 }
 
 export function escapeForDisplay(text: string): string {

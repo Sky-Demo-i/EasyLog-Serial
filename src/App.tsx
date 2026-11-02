@@ -33,7 +33,7 @@ import {
   buildPayload,
   bytesToBase64,
   escapeForDisplay,
-  formatHexRow,
+  formatHexFrame,
   formatTime,
   lineEnding,
   parseEscapes,
@@ -47,8 +47,9 @@ import {
   serializeCommands,
 } from "./lib/commands";
 import { makeEntry } from "./lib/elog";
-import { applyFilter, createFilter } from "./lib/filter";
+import { applyFilter, createFilter, isFilterActive } from "./lib/filter";
 import { LineStore } from "./lib/lineStore";
+import { findReconnectPort, nextPortSelection } from "./lib/ports";
 import { parseSession, type SessionChunk } from "./lib/session";
 import * as bridge from "./lib/serialBridge";
 
@@ -57,6 +58,8 @@ const OPTS_KEY = "easylog.display.v1";
 const CMDS_KEY = "easylog.commands.v1";
 const CONNECT_KEY = "easylog.connect.v1";
 const KEYWORD_COLORS_KEY = "easylog.keywordColors.v1";
+const CATEGORIES_KEY = "easylog.categories.v1";
+const CATEGORY_ORDER_KEY = "easylog.categoryOrder.v1";
 
 const EXAMPLE_COMMANDS: QuickCommand[] = [
   {
@@ -127,11 +130,12 @@ const DEFAULT_OPTIONS: DisplayOptions = {
   showFilter: true,
   showQuick: true,
   logFontSize: 13,
+  hexFrameGapMs: 30,
   timeWidth: 112,
   tagWidth: 48,
   funcWidth: 240,
-  dirWidth: 32,
-  levelWidth: 24,
+  dirWidth: 36,
+  levelWidth: 32,
   lineWidth: 44,
   tickWidth: 88,
   filterWidth: 220,
@@ -163,6 +167,10 @@ function loadOptions(): DisplayOptions {
     // 原始 keeps the stream untouched.
     merged.ansiRaw = !merged.elogMode;
     if (merged.quickWidth < 420) merged.quickWidth = 440;
+    const gap = Number(merged.hexFrameGapMs);
+    merged.hexFrameGapMs = Number.isFinite(gap)
+      ? Math.min(2000, Math.max(5, Math.round(gap)))
+      : 30;
     if (localStorage.getItem("easylog.transport.v1") === "tcp") {
       merged.timestamp = false;
     }
@@ -229,6 +237,34 @@ function loadCommands(): QuickCommand[] {
       byName.set(command.name || command.data, command);
     }
     return Array.from(byName.values());
+  } catch {
+    return [];
+  }
+}
+
+function loadCategories(): string[] {
+  try {
+    const raw = localStorage.getItem(CATEGORIES_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(parsed)) return [];
+    const names = new Set<string>();
+    for (const item of parsed) {
+      if (typeof item !== "string") continue;
+      const name = item.trim();
+      if (name) names.add(name);
+    }
+    return Array.from(names);
+  } catch {
+    return [];
+  }
+}
+
+function loadCategoryOrder(): string[] {
+  try {
+    const raw = localStorage.getItem(CATEGORY_ORDER_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((item): item is string => typeof item === "string");
   } catch {
     return [];
   }
@@ -330,8 +366,13 @@ export default function App() {
   const [connectOptions, setConnectOptions] = useState<ConnectOptions>(loadConnectOptions);
   const [options, setOptions] = useState<DisplayOptions>(loadOptions);
   const [commands, setCommands] = useState<QuickCommand[]>(loadCommands);
+  const [quickCategories, setQuickCategories] =
+    useState<string[]>(loadCategories);
+  const [categoryOrder, setCategoryOrder] =
+    useState<string[]>(loadCategoryOrder);
   const [connected, setConnected] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [waitingReconnect, setWaitingReconnect] = useState(false);
   const [status, setStatus] = useState("就绪");
   const [paused, setPaused] = useState(false);
   const [stats, setStats] = useState({ rx: 0, tx: 0 });
@@ -360,6 +401,7 @@ export default function App() {
   const [textMenu, setTextMenu] = useState<TextMenuState | null>(null);
   const [logSelectAll, setLogSelectAll] = useState(false);
   const [looping, setLooping] = useState(false);
+  const [filterToast, setFilterToast] = useState(false);
 
   const [transport, setTransport] = useState<"serial" | "tcp">(() =>
     localStorage.getItem("easylog.transport.v1") === "tcp" ? "tcp" : "serial",
@@ -383,8 +425,6 @@ export default function App() {
   const textBufRef = useRef("");
   const partialTimerRef = useRef<number | null>(null);
   const ansiCarryRef = useRef("");
-  const hexBufRef = useRef<number[]>([]);
-  const hexBaseRef = useRef(0);
   const renderTimerRef = useRef<number | null>(null);
   const replayTimerRef = useRef<number | null>(null);
   const replayCancelledRef = useRef(false);
@@ -392,6 +432,8 @@ export default function App() {
 
   const optionsRef = useRef(options);
   const connectOptionsRef = useRef(connectOptions);
+  const filterRef = useRef(filter);
+  const lastFilterWarnRef = useRef(0);
   const pausedRef = useRef(paused);
   const connectedRef = useRef(connected);
   const logSelectAllRef = useRef(logSelectAll);
@@ -404,6 +446,7 @@ export default function App() {
   const reconnectTimerRef = useRef<number | null>(null);
   const reconnectAttemptRef = useRef(0);
   const reconnectingRef = useRef(false);
+  const connectedPortRef = useRef<PortInfo | null>(null);
   const serialWasConnectedRef = useRef(false);
   const transportRef = useRef(transport);
   const tcpPortRef = useRef(tcpPort);
@@ -413,6 +456,7 @@ export default function App() {
 
   optionsRef.current = options;
   connectOptionsRef.current = connectOptions;
+  filterRef.current = filter;
   pausedRef.current = paused;
   connectedRef.current = connected;
   logSelectAllRef.current = logSelectAll;
@@ -422,8 +466,13 @@ export default function App() {
   sendParamsRef.current = { text: sendText, hex: sendHex, append };
 
   const view = useMemo(
-    () => applyFilter(storeRef.current.all, filter, options.elogMode),
-    [version, filter, options.elogMode],
+    () =>
+      applyFilter(
+        storeRef.current.all,
+        filter,
+        options.elogMode && !options.hex,
+      ),
+    [version, filter, options.elogMode, options.hex],
   );
 
   const searchMatches = useMemo<number[]>(() => {
@@ -508,6 +557,48 @@ export default function App() {
     }
   }
 
+  const sendWakeText = useCallback(
+    async (portName: string, autoReconnected = false) => {
+      const wake = connectOptionsRef.current;
+      const wakeText = wake.wakeEnabled ? wake.wakeText.trim() : "";
+      const base = autoReconnected
+        ? `${portName} 已自动回连，接收区继续保留`
+        : `已连接 ${portName}`;
+      if (!wakeText) {
+        setStatus(base);
+        return;
+      }
+      // Some ASR USB devices only start streaming logs after receiving one byte.
+      await delay(250);
+      const appendMode = sendParamsRef.current.append;
+      try {
+        // Match the send box's 结尾 setting: the ASR device may need "2\r\n",
+        // not just "2". Set 结尾=无 if the device wants a single byte.
+        const payload = buildPayload(parseEscapes(wakeText), false, appendMode);
+        const txId = optionsRef.current.showTx
+          ? storeRef.current.push(
+              makeEntry(Date.now(), "tx", escapeForDisplay(wakeText + lineEnding(appendMode))),
+            )
+          : null;
+        if (txId !== null) scheduleRender();
+        try {
+          await bridge.writePort(bytesToBase64(payload));
+          setStats((prev) => ({ ...prev, tx: prev.tx + payload.length }));
+          setStatus(`${base}，已发送激活字符 "${wakeText}"`);
+        } catch (error) {
+          if (txId !== null) {
+            storeRef.current.remove([txId]);
+            scheduleRender();
+          }
+          setStatus(`${base}，但激活字符发送失败：${normalizeError(error)}`);
+        }
+      } catch (error) {
+        setStatus(`${base}，但激活字符发送失败：${normalizeError(error)}`);
+      }
+    },
+    [scheduleRender],
+  );
+
   function beginAutoReconnect() {
     if (
       reconnectTimerRef.current !== null ||
@@ -518,8 +609,10 @@ export default function App() {
       return;
     }
 
+    const remembered = connectedPortRef.current;
     reconnectAttemptRef.current = 0;
     reconnectingRef.current = true;
+    setWaitingReconnect(true);
     setStatus(`连接断开，等待 ${configRef.current.portName} 自动回连…`);
 
     const attempt = async () => {
@@ -530,33 +623,62 @@ export default function App() {
         !configRef.current.portName
       ) {
         reconnectingRef.current = false;
+        setWaitingReconnect(false);
         return;
       }
       reconnectAttemptRef.current += 1;
+
+      let targetName = remembered?.name ?? configRef.current.portName;
+      if (remembered) {
+        try {
+          const list = await bridge.listPorts();
+          const match = findReconnectPort(list, remembered);
+          if (match) {
+            targetName = match.name;
+            connectedPortRef.current = match;
+          }
+        } catch {
+          // Port enumeration failed; keep retrying the remembered port.
+        }
+      }
+      if (!targetName) {
+        reconnectingRef.current = false;
+        setWaitingReconnect(false);
+        return;
+      }
+      if (targetName !== configRef.current.portName) {
+        configRef.current = { ...configRef.current, portName: targetName };
+        setConfig((prev) => ({ ...prev, portName: targetName }));
+      }
+      const targetConfig = { ...configRef.current, portName: targetName };
+
       try {
-        await bridge.openPort(configRef.current);
+        await bridge.openPort(targetConfig);
         if (manualDisconnectRef.current || transportRef.current !== "serial") {
           reconnectingRef.current = false;
+          setWaitingReconnect(false);
           if (manualDisconnectRef.current) {
             await bridge.closePort().catch(() => {});
           }
           return;
         }
         reconnectingRef.current = false;
+        setWaitingReconnect(false);
         serialWasConnectedRef.current = true;
         setConnected(true);
-        const marker = `──────── ${configRef.current.portName} 已自动回连 @ ${configRef.current.baudRate} ────────`;
+        const marker = `──────── ${targetName} 已自动回连 @ ${targetConfig.baudRate} ────────`;
         storeRef.current.push(makeEntry(Date.now(), "sys", marker));
         scheduleRender();
-        setStatus(`${configRef.current.portName} 已自动回连，接收区继续保留`);
+        void sendWakeText(targetName, true);
       } catch {
         const wait = Math.min(5000, 800 + reconnectAttemptRef.current * 600);
         if (manualDisconnectRef.current) {
           reconnectingRef.current = false;
+          setWaitingReconnect(false);
           return;
         }
         setStatus(
-          `${configRef.current.portName} 未就绪，${Math.round(wait / 100) / 10}s 后重试（第 ${reconnectAttemptRef.current} 次）`,
+          `${targetName} 未就绪，${Math.round(wait / 100) / 10}s 后重试（第 ${reconnectAttemptRef.current} 次）`,
         );
         reconnectTimerRef.current = window.setTimeout(attempt, wait);
       }
@@ -572,8 +694,6 @@ export default function App() {
       partialTimerRef.current = null;
     }
     ansiCarryRef.current = "";
-    hexBufRef.current = [];
-    hexBaseRef.current = 0;
     partialRef.current = "";
     const name = encoding ?? optionsRef.current.encoding;
     try {
@@ -634,20 +754,6 @@ export default function App() {
     }
   }, [flushPartial]);
 
-  const ingestHex = useCallback((bytes: Uint8Array, ts: number) => {
-    for (let i = 0; i < bytes.length; i++) hexBufRef.current.push(bytes[i]);
-    while (hexBufRef.current.length >= 16) {
-      const row = hexBufRef.current.splice(0, 16);
-      storeRef.current.push(
-        makeEntry(ts, "rx", formatHexRow(row, hexBaseRef.current), false),
-      );
-      hexBaseRef.current += 16;
-    }
-    partialRef.current = hexBufRef.current.length
-      ? formatHexRow(hexBufRef.current, hexBaseRef.current)
-      : "";
-  }, []);
-
   const handleData = useCallback(
     (payload: SerialDataPayload) => {
       let bytes: Uint8Array;
@@ -658,11 +764,19 @@ export default function App() {
       }
       setStats((prev) => ({ ...prev, rx: prev.rx + bytes.length }));
       if (pausedRef.current) return;
-      if (optionsRef.current.hex) ingestHex(bytes, payload.ts);
-      else ingestText(bytes, payload.ts);
+      if (optionsRef.current.hex) {
+        // Rust ends each payload at an idle gap, so one payload is one frame.
+        if (bytes.length > 0) {
+          storeRef.current.push(
+            makeEntry(payload.ts, "rx", formatHexFrame(bytes), false),
+          );
+        }
+      } else {
+        ingestText(bytes, payload.ts);
+      }
       scheduleRender();
     },
-    [ingestHex, ingestText, scheduleRender],
+    [ingestText, scheduleRender],
   );
 
   const stopReplay = useCallback((silent = false) => {
@@ -688,11 +802,9 @@ export default function App() {
         return;
       }
       if (optionsRef.current.hex) {
-        for (let i = 0; i < bytes.length; i += 16) {
-          storeRef.current.push(
-            makeEntry(chunk.ts, "tx", formatHexRow(bytes.slice(i, i + 16), i)),
-          );
-        }
+        storeRef.current.push(
+          makeEntry(chunk.ts, "tx", formatHexFrame(bytes), false),
+        );
       } else {
         const text = new TextDecoder(optionsRef.current.encoding).decode(bytes);
         storeRef.current.push(makeEntry(chunk.ts, "tx", escapeForDisplay(text)));
@@ -778,6 +890,13 @@ export default function App() {
     };
   }, [options.autoSave, options.autoSaveMaxMb]);
 
+  // HEX display relies on Rust-side idle framing; text mode keeps 30 ms batching.
+  useEffect(() => {
+    void bridge
+      .setFrameGap(options.hex ? options.hexFrameGapMs : 0)
+      .catch((error) => setStatus(`设置断帧间隔失败: ${normalizeError(error)}`));
+  }, [options.hex, options.hexFrameGapMs]);
+
   // Refresh the 10 MB usage indicator.
   useEffect(() => {
     let alive = true;
@@ -814,6 +933,7 @@ export default function App() {
           }
           clearReconnectTimer();
           reconnectingRef.current = false;
+          setWaitingReconnect(false);
         } else {
           setRecording(false);
           setTcpClients([]);
@@ -855,8 +975,12 @@ export default function App() {
         if (!alive) return;
         setPorts(list);
         setConfig((prev) => {
-          if (prev.portName && list.some((p) => p.name === prev.portName)) return prev;
-          return { ...prev, portName: list[0]?.name ?? "" };
+          const next = nextPortSelection(
+            prev.portName,
+            list,
+            reconnectingRef.current || serialWasConnectedRef.current,
+          );
+          return next === prev.portName ? prev : { ...prev, portName: next };
         });
       } catch (error) {
         if (alive) setStatus(normalizeError(error));
@@ -874,6 +998,18 @@ export default function App() {
   useEffect(() => {
     document.documentElement.dataset.theme = options.theme;
   }, [options.theme]);
+
+  useEffect(() => {
+    if (!filterToast) return;
+    const timer = window.setTimeout(() => setFilterToast(false), 6000);
+    return () => window.clearTimeout(timer);
+  }, [filterToast]);
+
+  useEffect(() => {
+    if (!isFilterActive(filter, options.elogMode && !options.hex)) {
+      lastFilterWarnRef.current = 0;
+    }
+  }, [filter, options.elogMode, options.hex]);
 
   useEffect(() => {
     setActiveMatch((prev) =>
@@ -997,6 +1133,12 @@ export default function App() {
     localStorage.setItem(CMDS_KEY, JSON.stringify(commands));
   }, [commands]);
   useEffect(() => {
+    localStorage.setItem(CATEGORIES_KEY, JSON.stringify(quickCategories));
+  }, [quickCategories]);
+  useEffect(() => {
+    localStorage.setItem(CATEGORY_ORDER_KEY, JSON.stringify(categoryOrder));
+  }, [categoryOrder]);
+  useEffect(() => {
     localStorage.setItem(KEYWORD_COLORS_KEY, JSON.stringify(keywordRules));
   }, [keywordRules]);
 
@@ -1045,6 +1187,15 @@ export default function App() {
     };
   }, []);
 
+  const maybeWarnFilter = useCallback(() => {
+    const mode = optionsRef.current.elogMode && !optionsRef.current.hex;
+    if (!isFilterActive(filterRef.current, mode)) return;
+    const now = Date.now();
+    if (now - lastFilterWarnRef.current < 10000) return;
+    lastFilterWarnRef.current = now;
+    setFilterToast(true);
+  }, []);
+
   const doSend = useCallback(
     async (text: string, hex: boolean, appendMode: AppendMode): Promise<boolean> => {
       if (!connectedRef.current) {
@@ -1064,13 +1215,9 @@ export default function App() {
       const txIds: number[] = [];
       if (optionsRef.current.showTx) {
         if (optionsRef.current.hex) {
-          for (let i = 0; i < payload.length; i += 16) {
-            txIds.push(
-              storeRef.current.push(
-                makeEntry(sendTs, "tx", formatHexRow(payload.slice(i, i + 16), i)),
-              ),
-            );
-          }
+          txIds.push(
+            storeRef.current.push(makeEntry(sendTs, "tx", formatHexFrame(payload))),
+          );
         } else if (hex) {
           const shown = Array.from(payload)
             .map((b) => b.toString(16).toUpperCase().padStart(2, "0"))
@@ -1093,6 +1240,7 @@ export default function App() {
           await bridge.writePort(bytesToBase64(payload));
         }
         setStats((prev) => ({ ...prev, tx: prev.tx + payload.length }));
+        maybeWarnFilter();
         return true;
       } catch (error) {
         storeRef.current.remove(txIds);
@@ -1101,7 +1249,7 @@ export default function App() {
         return false;
       }
     },
-    [scheduleRender],
+    [maybeWarnFilter, scheduleRender],
   );
 
   // Auto send.
@@ -1118,12 +1266,14 @@ export default function App() {
   const handleConnect = async () => {
     manualDisconnectRef.current = false;
     reconnectingRef.current = true;
+    setWaitingReconnect(false);
     clearReconnectTimer();
     if (loopRef.current) {
       loopRef.current = false;
       setLooping(false);
     }
     if (transport === "tcp") {
+      connectedPortRef.current = null;
       setBusy(true);
       stopReplay(true);
       try {
@@ -1148,6 +1298,7 @@ export default function App() {
     if (!config.portName) {
       setStatus("请选择串口");
       reconnectingRef.current = false;
+      connectedPortRef.current = null;
       return;
     }
     setBusy(true);
@@ -1160,46 +1311,26 @@ export default function App() {
       bump();
       await bridge.openPort(config);
 
-      const wake = connectOptionsRef.current;
-      const wakeText = wake.wakeEnabled ? wake.wakeText.trim() : "";
-      if (!wakeText) {
-        setStatus(`已连接 ${config.portName}`);
-      } else {
-        // Some ASR USB devices only start streaming logs after receiving one byte.
-        await delay(250);
+      let info = ports.find((port) => port.name === config.portName);
+      if (!info) {
         try {
-          // Match the send box's 结尾 setting: the ASR device may need "2\r\n",
-          // not just "2". Set 结尾=无 if the device wants a single byte.
-          const payload = buildPayload(parseEscapes(wakeText), false, append);
-          const txId = optionsRef.current.showTx
-            ? storeRef.current.push(
-                makeEntry(Date.now(), "tx", escapeForDisplay(wakeText + lineEnding(append))),
-              )
-            : null;
-          if (txId !== null) scheduleRender();
-          try {
-            await bridge.writePort(bytesToBase64(payload));
-            setStats((prev) => ({ ...prev, tx: prev.tx + payload.length }));
-            setStatus(`已连接 ${config.portName}，已发送激活字符 "${wakeText}"`);
-          } catch (error) {
-            if (txId !== null) {
-              storeRef.current.remove([txId]);
-              scheduleRender();
-            }
-            setStatus(
-              `已连接 ${config.portName}，但激活字符发送失败：${normalizeError(error)}`,
-            );
-          }
-        } catch (error) {
-          setStatus(
-            `已连接 ${config.portName}，但激活字符发送失败：${normalizeError(error)}`,
+          info = (await bridge.listPorts()).find(
+            (port) => port.name === config.portName,
           );
+        } catch {
+          // Identity is optional; the port name still works as a fallback.
         }
       }
+      connectedPortRef.current = info
+        ? { ...info }
+        : { name: config.portName, kind: "串口" };
+
+      await sendWakeText(config.portName);
     } catch (error) {
       setStatus(normalizeError(error));
       setConnected(false);
       reconnectingRef.current = false;
+      connectedPortRef.current = null;
     } finally {
       setBusy(false);
     }
@@ -1209,6 +1340,8 @@ export default function App() {
     manualDisconnectRef.current = true;
     reconnectingRef.current = false;
     serialWasConnectedRef.current = false;
+    connectedPortRef.current = null;
+    setWaitingReconnect(false);
     clearReconnectTimer();
     if (loopRef.current) {
       loopRef.current = false;
@@ -1545,6 +1678,8 @@ export default function App() {
     if (connected || next === transport) return;
     clearReconnectTimer();
     reconnectingRef.current = false;
+    connectedPortRef.current = null;
+    setWaitingReconnect(false);
     serialWasConnectedRef.current = false;
     if (next === "tcp") {
       serialTimestampRef.current = options.timestamp;
@@ -1585,6 +1720,7 @@ export default function App() {
         connected={connected}
         busy={busy}
         transport={transport}
+        waitingReconnect={waitingReconnect}
         tcpPort={tcpPort}
         tcpHost={tcpHost}
         tcpClients={tcpClients.length}
@@ -1630,6 +1766,7 @@ export default function App() {
           visible={view.visible.length}
           width={options.filterWidth}
           elogMode={options.elogMode}
+          hexMode={options.hex}
           colorRules={keywordRules}
           onChange={setFilter}
           onReset={() => setFilter(createFilter())}
@@ -1673,6 +1810,31 @@ export default function App() {
                   />
                   HEX
                 </label>
+                {options.hex && (
+                  <label
+                    className="field inline hex-gap-field"
+                    title="两帧之间静默超过该时间就断成新的一行；连续无空闲的数据按 200ms / 4KB 强制断行"
+                  >
+                    <span>帧间隔</span>
+                    <input
+                      type="number"
+                      min={5}
+                      max={2000}
+                      step={5}
+                      value={options.hexFrameGapMs}
+                      onChange={(e) => {
+                        const value = Number(e.target.value);
+                        if (Number.isFinite(value)) {
+                          setOption(
+                            "hexFrameGapMs",
+                            Math.min(2000, Math.max(5, Math.round(value))),
+                          );
+                        }
+                      }}
+                    />
+                    <span>ms</span>
+                  </label>
+                )}
                 <div className="mode-switch" role="group" aria-label="日志显示模式">
                   <button
                     type="button"
@@ -2000,7 +2162,11 @@ export default function App() {
             connected={connected}
             width={options.quickWidth}
             looping={looping}
+            categories={quickCategories}
+            categoryOrder={categoryOrder}
             onChange={setCommands}
+            onCategoriesChange={setQuickCategories}
+            onCategoryOrderChange={setCategoryOrder}
             onSend={(command) => void doSend(command.data, command.hex, resolveCommandAppend(command))}
             onSendAll={(list) => void sendAll(list)}
             onStartLoop={startLoop}
@@ -2016,6 +2182,32 @@ export default function App() {
           />
         )}
       </div>
+
+      {filterToast && (
+        <div className="app-toast filter-warn" role="status">
+          <span className="app-toast-icon">!</span>
+          <div className="app-toast-body">
+            <strong>当前有过滤条件</strong>
+            <span>发送的指令和设备回复可能不会显示在接收区。</span>
+          </div>
+          <button
+            className="link-btn"
+            onClick={() => {
+              setFilter(createFilter());
+              setFilterToast(false);
+            }}
+          >
+            清除过滤
+          </button>
+          <button
+            className="toast-close"
+            title="关闭提示"
+            onClick={() => setFilterToast(false)}
+          >
+            ×
+          </button>
+        </div>
+      )}
 
       {textMenu && (
         <div

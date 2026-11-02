@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { LogEntry, LogFilter, LogLevel } from "../types";
 import { makeEntry } from "./elog";
-import { applyFilter, createFilter } from "./filter";
+import { applyFilter, createFilter, isFilterActive } from "./filter";
 
 const entries: LogEntry[] = [
   makeEntry(1, "rx", "V/TRK    (10 main_start)boot ok"),
@@ -64,5 +64,31 @@ describe("applyFilter", () => {
   it("falls back to substring when the regex is invalid", () => {
     const result = applyFilter(entries, withFilter({ keyword: "[", regex: true }));
     expect(result.visible).toHaveLength(0);
+  });
+});
+
+describe("isFilterActive", () => {
+  it("is false for a fresh filter", () => {
+    expect(isFilterActive(createFilter())).toBe(false);
+  });
+
+  it("counts keyword filters in raw/HEX mode", () => {
+    expect(isFilterActive(withFilter({ keyword: "rollover" }), false)).toBe(true);
+  });
+
+  it("ignores level/tag filters in raw/HEX mode", () => {
+    expect(
+      isFilterActive(
+        withFilter({ levels: new Set<LogLevel>(["E"]), tags: new Set(["SYS"]) }),
+        false,
+      ),
+    ).toBe(false);
+  });
+
+  it("counts level and tag filters in EasyLog mode", () => {
+    expect(
+      isFilterActive(withFilter({ levels: new Set<LogLevel>(["E"]) }), true),
+    ).toBe(true);
+    expect(isFilterActive(withFilter({ tags: new Set(["SYS"]) }), true)).toBe(true);
   });
 });

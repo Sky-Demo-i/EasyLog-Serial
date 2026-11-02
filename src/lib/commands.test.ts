@@ -1,10 +1,16 @@
 import { describe, expect, it } from "vitest";
+import type { QuickCommand } from "../types";
 import {
+  collectCategories,
+  deleteCategory,
   mergeCommands,
   migrateCommandAppend,
+  moveCategory,
   parseCommandText,
+  renameCategory,
   resolveAppend,
   serializeCommands,
+  UNCATEGORIZED_CATEGORY,
 } from "./commands";
 import { buildPayload } from "./format";
 
@@ -163,5 +169,159 @@ describe("serializeCommands", () => {
     const parsed = JSON.parse(text);
     expect(parsed.commands[0].id).toBeUndefined();
     expect(parsed.commands[0].data).toBe("01");
+  });
+});
+
+describe("collectCategories", () => {
+  it("keeps empty stored categories and merges command categories", () => {
+    const commands = [
+      {
+        id: "1",
+        name: "a",
+        data: "01",
+        hex: false,
+        append: "global" as const,
+        enabled: true,
+        category: "net",
+      },
+      {
+        id: "2",
+        name: "b",
+        data: "02",
+        hex: false,
+        append: "global" as const,
+        enabled: true,
+      },
+    ];
+    expect(collectCategories([" net ", "net", "log", ""], commands)).toEqual([
+      "未分类",
+      "log",
+      "net",
+    ]);
+  });
+
+  it("falls back to 未分类 when nothing exists", () => {
+    expect(collectCategories([], [])).toEqual(["未分类"]);
+  });
+
+  it("respects the persisted display order", () => {
+    const commands = [command("1", "net"), command("2")];
+    expect(collectCategories(["net", "log"], commands, ["log", "net"])).toEqual([
+      "log",
+      "net",
+      "未分类",
+    ]);
+  });
+
+  it("appends categories missing from the saved order", () => {
+    const commands = [command("1", "net"), command("2", "log"), command("3")];
+    expect(collectCategories([], commands, ["net"])).toEqual([
+      "net",
+      "未分类",
+      "log",
+    ]);
+  });
+
+  it("ignores stale names in the saved order", () => {
+    expect(collectCategories(["net"], [], ["removed", "net"])).toEqual(["net"]);
+  });
+});
+
+describe("moveCategory", () => {
+  it("moves a category left and right", () => {
+    expect(moveCategory(["a", "b", "c"], "c", -1)).toEqual(["a", "c", "b"]);
+    expect(moveCategory(["a", "b", "c"], "a", 1)).toEqual(["b", "a", "c"]);
+  });
+
+  it("keeps the array unchanged at the edges", () => {
+    const order = ["a", "b"];
+    expect(moveCategory(order, "a", -1)).toBe(order);
+    expect(moveCategory(order, "b", 1)).toBe(order);
+  });
+
+  it("ignores unknown categories", () => {
+    const order = ["a", "b"];
+    expect(moveCategory(order, "missing", 1)).toBe(order);
+  });
+});
+
+function command(id: string, category?: string): QuickCommand {
+  return {
+    id,
+    name: id,
+    data: "AT",
+    hex: false,
+    append: "global",
+    enabled: true,
+    category,
+  };
+}
+
+describe("renameCategory", () => {
+  it("renames a category and moves its commands", () => {
+    const result = renameCategory(
+      [command("1", "net"), command("2", "log"), command("3")],
+      ["net", "log", "empty"],
+      "net",
+      "network",
+    );
+    expect(result.categories).toEqual(["log", "empty", "network"]);
+    expect(result.commands.map((item) => item.category)).toEqual([
+      "network",
+      "log",
+      undefined,
+    ]);
+  });
+
+  it("merges into an existing category without duplicating it", () => {
+    const result = renameCategory(
+      [command("1", "net")],
+      ["net", "log"],
+      "net",
+      "log",
+    );
+    expect(result.categories).toEqual(["log"]);
+    expect(result.commands[0].category).toBe("log");
+  });
+
+  it("moves commands into 未分类", () => {
+    const result = renameCategory(
+      [command("1", "net")],
+      ["net"],
+      "net",
+      UNCATEGORIZED_CATEGORY,
+    );
+    expect(result.categories).toEqual([]);
+    expect(result.commands[0].category).toBe(UNCATEGORIZED_CATEGORY);
+  });
+});
+
+describe("deleteCategory", () => {
+  it("moves commands to 未分类 when the category is removed", () => {
+    const result = deleteCategory(
+      [command("1", "net"), command("2", "log")],
+      ["net", "log"],
+      "net",
+      "move",
+    );
+    expect(result.categories).toEqual(["log"]);
+    expect(result.commands).toHaveLength(2);
+    expect(result.commands[0].category).toBe(UNCATEGORIZED_CATEGORY);
+  });
+
+  it("removes commands together with the category", () => {
+    const result = deleteCategory(
+      [command("1", "net"), command("2", "log")],
+      ["net", "log"],
+      "net",
+      "remove",
+    );
+    expect(result.commands.map((item) => item.id)).toEqual(["2"]);
+    expect(result.categories).toEqual(["log"]);
+  });
+
+  it("removes an empty stored category", () => {
+    const result = deleteCategory([], ["empty"], "empty", "move");
+    expect(result.categories).toEqual([]);
   });
 });

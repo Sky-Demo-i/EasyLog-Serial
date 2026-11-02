@@ -99,6 +99,8 @@ export interface DisplayOptions {
   showFilter: boolean;
   showQuick: boolean;
   logFontSize: number;
+  /** HEX frames are split after this idle gap (ms). */
+  hexFrameGapMs: number;
   timeWidth: number;
   tagWidth: number;
   funcWidth: number;

@@ -20,6 +20,7 @@ interface Props {
   visible: number;
   width: number;
   elogMode: boolean;
+  hexMode: boolean;
   colorRules: KeywordColorRule[];
   onChange: (filter: LogFilter) => void;
   onReset: () => void;
@@ -34,6 +35,7 @@ export default function FilterPanel({
   visible,
   width,
   elogMode,
+  hexMode,
   colorRules,
   onChange,
   onReset,
@@ -112,20 +114,24 @@ export default function FilterPanel({
       <div className="pane-header">
         <span className="filter-heading">
           过滤
-          <span className={`filter-mode ${elogMode ? "elog" : "raw"}`}>
-            {elogMode ? "EasyLog" : "原始"}
+          <span className={`filter-mode ${hexMode ? "hex" : elogMode ? "elog" : "raw"}`}>
+            {hexMode ? "HEX" : elogMode ? "EasyLog" : "原始"}
           </span>
         </span>
         <button
           className="link-btn"
           onClick={onReset}
-          title={elogMode ? "恢复全部级别、清空 Tag 与关键字" : "清空关键字过滤"}
+          title={
+            elogMode && !hexMode
+              ? "恢复全部级别、清空 Tag 与关键字"
+              : "清空关键字过滤"
+          }
         >
           重置
         </button>
       </div>
 
-      {elogMode && (
+      {elogMode && !hexMode && (
         <div className="filter-section">
           <div className="filter-title">
             <span>级别</span>
@@ -155,7 +161,7 @@ export default function FilterPanel({
         </div>
       )}
 
-      {elogMode && (
+      {elogMode && !hexMode && (
         <div className="filter-section grow">
           <div className="filter-title">
             <span>Tag</span>
@@ -184,11 +190,15 @@ export default function FilterPanel({
         </div>
       )}
 
-      {!elogMode && (
+      {hexMode ? (
+        <div className="filter-raw-note">
+          HEX 模式：按帧显示，只使用关键字和颜色规则过滤；级别 / Tag 不参与。
+        </div>
+      ) : !elogMode ? (
         <div className="filter-raw-note">
           原始模式：级别 / Tag 不参与过滤，按下方关键字和颜色规则原样显示。
         </div>
-      )}
+      ) : null}
 
       <div className="filter-section">
         <div className="filter-title">
@@ -200,7 +210,7 @@ export default function FilterPanel({
         <div className="color-rule-list">
           {colorRules.length === 0 && (
             <div className="filter-hint">
-              {elogMode
+              {elogMode && !hexMode
                 ? "添加关键字后整行使用该颜色，优先级高于级别颜色"
                 : "添加关键字后，命中的整行按颜色显示"}
             </div>
@@ -269,7 +279,7 @@ export default function FilterPanel({
 
       <div className="filter-summary">
         显示 <b>{visible.toLocaleString()}</b> / {total.toLocaleString()}
-        {elogMode && filter.tags.size > 0 && (
+        {elogMode && !hexMode && filter.tags.size > 0 && (
           <div className="filter-hint">Tag 过滤时隐藏未解析行</div>
         )}
       </div>

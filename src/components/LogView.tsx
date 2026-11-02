@@ -91,10 +91,11 @@ export default function LogView({
   const fontSize = options.logFontSize || 13;
   const rowHeight = Math.max(26, Math.round(fontSize * 2.2));
   const timeWidth = Math.max(options.timeWidth, Math.ceil(fontSize * 8.4));
-  const dirWidth = Math.max(options.dirWidth ?? 32, Math.ceil(fontSize * 2.4));
-  const levelWidth = Math.max(options.levelWidth ?? 24, Math.ceil(fontSize * 1.55));
-  const lineWidth = Math.max(options.lineWidth ?? 44, Math.ceil(fontSize * 2.6));
+  const dirWidth = Math.max(options.dirWidth ?? 36, Math.ceil(fontSize * 2.7));
+  const levelWidth = Math.max(options.levelWidth ?? 32, Math.ceil(fontSize * 2.4));
+  const lineWidth = Math.max(options.lineWidth ?? 44, Math.ceil(fontSize * 2.9));
   const tickWidth = Math.max(options.tickWidth ?? 88, Math.ceil(fontSize * 6));
+  const showMeta = options.elogMode && !options.hex;
 
   const contentWidth = useMemo(() => {
     // Measuring every historical line on each batch is the main render cost at
@@ -112,7 +113,7 @@ export default function LogView({
     let fixed = pad;
     if (options.timestamp) fixed += timeWidth + gap;
     if (options.direction) fixed += dirWidth + gap;
-    if (options.elogMode) {
+    if (showMeta) {
       fixed +=
         levelWidth +
         gap +
@@ -138,7 +139,7 @@ export default function LogView({
     tickWidth,
     options.timestamp,
     options.direction,
-    options.elogMode,
+    showMeta,
     options.tagWidth,
     options.funcWidth,
   ]);
@@ -191,7 +192,6 @@ export default function LogView({
   for (let index = start; index < end; index++) {
     const isPartial = index >= lines.length;
     const entry = isPartial ? partialEntry! : lines[index];
-    const showMeta = options.elogMode;
     const displayText = showMeta ? entry.message : entry.text;
     const customColor = keywordColor(entry, colorRules);
     const dim =

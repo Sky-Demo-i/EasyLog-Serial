@@ -124,6 +124,11 @@ fn export_commands(content: String, suggested_name: String) -> Result<Option<Str
 }
 
 #[tauri::command]
+fn set_frame_gap(state: tauri::State<'_, SerialManager>, gap_ms: u64) {
+    state.set_frame_gap(gap_ms);
+}
+
+#[tauri::command]
 fn set_autosave(
     state: tauri::State<'_, SerialManager>,
     enabled: bool,
@@ -155,6 +160,7 @@ pub fn run() {
             tcp_write_port,
             local_ip,
             export_commands,
+            set_frame_gap,
             set_autosave,
             autosave_info
         ])

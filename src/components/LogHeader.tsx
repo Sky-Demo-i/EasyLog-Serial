@@ -17,21 +17,22 @@ interface Props {
 
 const LIMITS: Record<ResizeKey, [number, number]> = {
   timeWidth: [70, 200],
-  dirWidth: [20, 80],
-  levelWidth: [18, 80],
+  dirWidth: [36, 88],
+  levelWidth: [32, 88],
   tagWidth: [40, 160],
   funcWidth: [80, 600],
-  lineWidth: [24, 120],
+  lineWidth: [38, 120],
   tickWidth: [48, 240],
 };
 
 export default function LogHeader({ options, onResize }: Props) {
   const fontSize = options.logFontSize || 13;
   const timeWidth = Math.max(options.timeWidth, Math.ceil(fontSize * 8.4));
-  const dirWidth = Math.max(options.dirWidth ?? 32, Math.ceil(fontSize * 2.4));
-  const levelWidth = Math.max(options.levelWidth ?? 24, Math.ceil(fontSize * 1.55));
-  const lineWidth = Math.max(options.lineWidth ?? 44, Math.ceil(fontSize * 2.6));
+  const dirWidth = Math.max(options.dirWidth ?? 36, Math.ceil(fontSize * 2.7));
+  const levelWidth = Math.max(options.levelWidth ?? 32, Math.ceil(fontSize * 2.4));
+  const lineWidth = Math.max(options.lineWidth ?? 44, Math.ceil(fontSize * 2.9));
   const tickWidth = Math.max(options.tickWidth ?? 88, Math.ceil(fontSize * 6));
+  const showMeta = options.elogMode && !options.hex;
 
   const startResize = (key: ResizeKey, event: ReactPointerEvent) => {
     event.preventDefault();
@@ -75,30 +76,30 @@ export default function LogHeader({ options, onResize }: Props) {
       )}
       {options.direction && (
         <span className="log-hcell" style={{ width: dirWidth }}>
-          向{resizer("dirWidth")}
+          方向{resizer("dirWidth")}
         </span>
       )}
-      {options.elogMode && (
+      {showMeta && (
         <span className="log-hcell" style={{ width: levelWidth }}>
-          级{resizer("levelWidth")}
+          等级{resizer("levelWidth")}
         </span>
       )}
-      {options.elogMode && (
+      {showMeta && (
         <span className="log-hcell" style={{ width: options.tagWidth }}>
           Tag{resizer("tagWidth")}
         </span>
       )}
-      {options.elogMode && (
+      {showMeta && (
         <span className="log-hcell" style={{ width: options.funcWidth }}>
           函数{resizer("funcWidth")}
         </span>
       )}
-      {options.elogMode && (
+      {showMeta && (
         <span className="log-hcell" style={{ width: lineWidth, textAlign: "right" }}>
-          行{resizer("lineWidth")}
+          行数{resizer("lineWidth")}
         </span>
       )}
-      {options.elogMode && (
+      {showMeta && (
         <span className="log-hcell" style={{ width: tickWidth }}>
           TICK{resizer("tickWidth")}
         </span>

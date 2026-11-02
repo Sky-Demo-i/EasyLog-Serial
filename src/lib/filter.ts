@@ -11,12 +11,11 @@ export function createFilter(): LogFilter {
   };
 }
 
-export function isFilterActive(filter: LogFilter): boolean {
-  return (
-    filter.levels.size !== LEVELS.length ||
-    filter.tags.size > 0 ||
-    filter.keyword.trim().length > 0
-  );
+/** Whether the filter can hide rows in the current display mode. */
+export function isFilterActive(filter: LogFilter, elogMode = true): boolean {
+  if (filter.keyword.trim().length > 0) return true;
+  if (!elogMode) return false;
+  return filter.levels.size !== LEVELS.length || filter.tags.size > 0;
 }
 
 function makeKeywordMatcher(filter: LogFilter): (text: string) => boolean {

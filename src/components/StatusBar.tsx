@@ -94,7 +94,7 @@ export default function StatusBar({
         {status}
       </span>
       <span className="app-meta" title="作者 · 版本">
-        lyg · v0.3.31
+        lyg · v0.3.37
       </span>
     </div>
   );

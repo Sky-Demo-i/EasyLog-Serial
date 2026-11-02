@@ -263,6 +263,107 @@ export function serializeCommands(commands: QuickCommand[]): string {
   );
 }
 
+/** Merge explicitly created (possibly empty) categories with command categories. */
+export function collectCategories(
+  stored: string[],
+  commands: QuickCommand[],
+  order: string[] = [],
+): string[] {
+  const names = new Set<string>();
+  for (const item of stored) {
+    const name = item.trim();
+    if (name) names.add(name);
+  }
+  for (const command of commands) {
+    names.add(command.category?.trim() || "未分类");
+  }
+  if (names.size === 0) names.add("未分类");
+
+  const ordered: string[] = [];
+  const used = new Set<string>();
+  for (const item of order) {
+    const name = item.trim();
+    if (name && names.has(name) && !used.has(name)) {
+      ordered.push(name);
+      used.add(name);
+    }
+  }
+  const rest = Array.from(names)
+    .filter((name) => !used.has(name))
+    .sort((a, b) =>
+      a === "未分类" ? -1 : b === "未分类" ? 1 : a.localeCompare(b, "zh-CN"),
+    );
+  return [...ordered, ...rest];
+}
+
+/** Move one category left/right inside the persisted display order. */
+export function moveCategory(
+  order: string[],
+  name: string,
+  delta: number,
+): string[] {
+  const index = order.indexOf(name);
+  const target = index + delta;
+  if (index < 0 || target < 0 || target >= order.length) return order;
+  const next = [...order];
+  const [item] = next.splice(index, 1);
+  next.splice(target, 0, item);
+  return next;
+}
+
+export const UNCATEGORIZED_CATEGORY = "未分类";
+
+function categoryNameOf(command: QuickCommand): string {
+  return command.category?.trim() || UNCATEGORIZED_CATEGORY;
+}
+
+export interface CategoryUpdate {
+  commands: QuickCommand[];
+  categories: string[];
+}
+
+export function renameCategory(
+  commands: QuickCommand[],
+  stored: string[],
+  from: string,
+  to: string,
+): CategoryUpdate {
+  const name = to.trim();
+  if (!name || name === from) return { commands, categories: stored };
+  const categories = stored.filter((item) => item.trim() !== from);
+  if (
+    name !== UNCATEGORIZED_CATEGORY &&
+    !categories.some((item) => item.trim() === name)
+  ) {
+    categories.push(name);
+  }
+  return {
+    commands: commands.map((command) =>
+      categoryNameOf(command) === from ? { ...command, category: name } : command,
+    ),
+    categories,
+  };
+}
+
+export function deleteCategory(
+  commands: QuickCommand[],
+  stored: string[],
+  name: string,
+  mode: "move" | "remove",
+): CategoryUpdate {
+  return {
+    commands:
+      mode === "remove"
+        ? commands.filter((command) => categoryNameOf(command) !== name)
+        : commands.map((command) =>
+            categoryNameOf(command) === name
+              ? { ...command, category: UNCATEGORIZED_CATEGORY }
+              : command,
+          ),
+    categories: stored.filter((item) => item.trim() !== name),
+  };
+}
+
 export function makeCommand(
   name: string,
   data: string,

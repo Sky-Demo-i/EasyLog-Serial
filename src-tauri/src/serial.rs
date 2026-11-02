@@ -24,7 +24,7 @@ use std::fs::{self, File};
 use std::io::{BufWriter, ErrorKind, Read, Write};
 use std::net::{IpAddr, Shutdown, TcpListener, TcpStream, UdpSocket};
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -38,6 +38,11 @@ use crate::autosave::{AutoSave, AutoSaveInfo};
 pub const EV_DATA: &str = "serial://data";
 pub const EV_STATE: &str = "serial://state";
 pub const EV_TCP_CLIENTS: &str = "tcp://clients";
+
+/// A frame that never sees an idle gap is cut after this long / this many bytes
+/// so a continuous stream still reaches the UI instead of growing forever.
+const FRAME_MAX_AGE_MS: u64 = 200;
+const FRAME_MAX_BYTES: usize = 4096;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -123,6 +128,83 @@ struct Recording {
     path: PathBuf,
 }
 
+struct Frame {
+    bytes: Vec<u8>,
+    ts: u64,
+}
+
+/// Assembles bytes into frames the way a UART idle interrupt does: a gap of
+/// `gap_ms` without new data ends the frame. Time is passed in so tests can
+/// drive it without sleeping.
+struct FrameBuffer {
+    bytes: Vec<u8>,
+    started_wall: u64,
+    started_at: Instant,
+    last_data_at: Instant,
+}
+
+impl FrameBuffer {
+    fn new() -> Self {
+        let now = Instant::now();
+        Self {
+            bytes: Vec::new(),
+            started_wall: 0,
+            started_at: now,
+            last_data_at: now,
+        }
+    }
+
+    #[cfg(test)]
+    fn is_empty(&self) -> bool {
+        self.bytes.is_empty()
+    }
+
+    fn push(&mut self, data: &[u8], now: Instant, wall: u64, gap_ms: u64) -> Option<Frame> {
+        let mut completed = None;
+        if !self.bytes.is_empty()
+            && now.duration_since(self.last_data_at) >= Duration::from_millis(gap_ms)
+        {
+            completed = self.take();
+        }
+        if self.bytes.is_empty() {
+            self.started_wall = wall;
+            self.started_at = now;
+        }
+        self.bytes.extend_from_slice(data);
+        self.last_data_at = now;
+        if completed.is_none()
+            && (self.bytes.len() >= FRAME_MAX_BYTES
+                || now.duration_since(self.started_at) >= Duration::from_millis(FRAME_MAX_AGE_MS))
+        {
+            completed = self.take();
+        }
+        completed
+    }
+
+    fn poll(&mut self, now: Instant, gap_ms: u64) -> Option<Frame> {
+        if self.bytes.is_empty() {
+            return None;
+        }
+        if now.duration_since(self.last_data_at) >= Duration::from_millis(gap_ms)
+            || now.duration_since(self.started_at) >= Duration::from_millis(FRAME_MAX_AGE_MS)
+        {
+            self.take()
+        } else {
+            None
+        }
+    }
+
+    fn take(&mut self) -> Option<Frame> {
+        if self.bytes.is_empty() {
+            return None;
+        }
+        Some(Frame {
+            bytes: std::mem::take(&mut self.bytes),
+            ts: self.started_wall,
+        })
+    }
+}
+
 pub struct SerialManager {
     port: Arc<Mutex<Option<Box<dyn serialport::SerialPort>>>>,
     running: Arc<AtomicBool>,
@@ -130,6 +212,8 @@ pub struct SerialManager {
     recorder: Arc<Mutex<Option<Recording>>>,
     autosave: Arc<Mutex<AutoSave>>,
     tcp: Mutex<Option<TcpServer>>,
+    /// 0 = stream mode (30 ms batching); >0 = split frames on an idle gap.
+    frame_gap_ms: Arc<AtomicU64>,
 }
 
 impl SerialManager {
@@ -141,7 +225,13 @@ impl SerialManager {
             recorder: Arc::new(Mutex::new(None)),
             autosave: Arc::new(Mutex::new(AutoSave::new())),
             tcp: Mutex::new(None),
+            frame_gap_ms: Arc::new(AtomicU64::new(0)),
         }
+    }
+
+    pub fn set_frame_gap(&self, gap_ms: u64) {
+        self.frame_gap_ms
+            .store(gap_ms.min(2000), Ordering::Relaxed);
     }
 
     /// Stop the reader thread, close the port, and close the recording file.
@@ -213,22 +303,70 @@ impl SerialManager {
         let running = Arc::clone(&self.running);
         let recorder = Arc::clone(&self.recorder);
         let autosave = Arc::clone(&self.autosave);
+        let frame_gap = Arc::clone(&self.frame_gap_ms);
         let app_handle = app.clone();
 
         let handle = thread::spawn(move || {
             let mut buf = [0u8; 8192];
             let mut pending: Vec<u8> = Vec::with_capacity(8192);
+            let mut framer = FrameBuffer::new();
+            let mut framing = false;
             let mut last_emit = Instant::now();
             let mut total: u64 = 0;
 
             while running.load(Ordering::SeqCst) {
+                let gap = frame_gap.load(Ordering::Relaxed);
+
+                // Toggling HEX changes the mode without reopening the port.
+                if gap > 0 && !framing {
+                    if !pending.is_empty() {
+                        emit_rx(&app_handle, &recorder, &autosave, now_ms(), &pending, total);
+                        pending.clear();
+                    }
+                    framing = true;
+                    last_emit = Instant::now();
+                } else if gap == 0 && framing {
+                    if let Some(frame) = framer.take() {
+                        emit_rx(&app_handle, &recorder, &autosave, frame.ts, &frame.bytes, total);
+                    }
+                    framing = false;
+                    last_emit = Instant::now();
+                }
+
                 match reader.read(&mut buf) {
                     Ok(0) => {}
                     Ok(n) => {
-                        pending.extend_from_slice(&buf[..n]);
                         total += n as u64;
+                        if gap > 0 {
+                            let now = Instant::now();
+                            if let Some(frame) = framer.push(&buf[..n], now, now_ms(), gap) {
+                                emit_rx(
+                                    &app_handle,
+                                    &recorder,
+                                    &autosave,
+                                    frame.ts,
+                                    &frame.bytes,
+                                    total,
+                                );
+                            }
+                        } else {
+                            pending.extend_from_slice(&buf[..n]);
+                        }
                     }
-                    Err(ref e) if e.kind() == ErrorKind::TimedOut => {}
+                    Err(ref e) if e.kind() == ErrorKind::TimedOut => {
+                        if gap > 0 {
+                            if let Some(frame) = framer.poll(Instant::now(), gap) {
+                                emit_rx(
+                                    &app_handle,
+                                    &recorder,
+                                    &autosave,
+                                    frame.ts,
+                                    &frame.bytes,
+                                    total,
+                                );
+                            }
+                        }
+                    }
                     Err(e) => {
                         let _ = app_handle.emit(
                             EV_STATE,
@@ -241,43 +379,23 @@ impl SerialManager {
                     }
                 }
 
-                let due = pending.len() >= 4096
-                    || (last_emit.elapsed() >= Duration::from_millis(30) && !pending.is_empty());
-                if due {
-                    let ts = now_ms();
-                    let encoded = B64.encode(&pending);
-                    let _ = app_handle.emit(
-                        EV_DATA,
-                        DataPayload {
-                            ts,
-                            data: encoded,
-                            rx_total: total,
-                        },
-                    );
-                    record_chunk(&recorder, "rx", ts, &pending);
-                    if let Ok(mut writer) = autosave.lock() {
-                        writer.append_rx(ts, &pending);
+                if gap == 0 {
+                    let due = pending.len() >= FRAME_MAX_BYTES
+                        || (last_emit.elapsed() >= Duration::from_millis(30)
+                            && !pending.is_empty());
+                    if due {
+                        emit_rx(&app_handle, &recorder, &autosave, now_ms(), &pending, total);
+                        pending.clear();
+                        last_emit = Instant::now();
                     }
-                    pending.clear();
-                    last_emit = Instant::now();
                 }
             }
 
             if !pending.is_empty() {
-                let ts = now_ms();
-                let encoded = B64.encode(&pending);
-                let _ = app_handle.emit(
-                    EV_DATA,
-                    DataPayload {
-                        ts,
-                        data: encoded,
-                        rx_total: total,
-                    },
-                );
-                record_chunk(&recorder, "rx", ts, &pending);
-                if let Ok(mut writer) = autosave.lock() {
-                    writer.append_rx(ts, &pending);
-                }
+                emit_rx(&app_handle, &recorder, &autosave, now_ms(), &pending, total);
+            }
+            if let Some(frame) = framer.take() {
+                emit_rx(&app_handle, &recorder, &autosave, frame.ts, &frame.bytes, total);
             }
         });
 
@@ -314,6 +432,7 @@ impl SerialManager {
             Arc::new(Mutex::new(HashMap::new()));
         let recorder = Arc::clone(&self.recorder);
         let autosave = Arc::clone(&self.autosave);
+        let frame_gap = Arc::clone(&self.frame_gap_ms);
         let app_handle = app.clone();
         let accept_running = Arc::clone(&running);
         let accept_clients = Arc::clone(&clients);
@@ -366,6 +485,7 @@ impl SerialManager {
                         let client_clients = Arc::clone(&accept_clients);
                         let client_recorder = Arc::clone(&recorder);
                         let client_autosave = Arc::clone(&autosave);
+                        let client_frame_gap = Arc::clone(&frame_gap);
                         let client_running_after = Arc::clone(&client_running);
                         thread::spawn(move || {
                             tcp_client_loop(
@@ -375,6 +495,7 @@ impl SerialManager {
                                 client_running,
                                 client_recorder,
                                 client_autosave,
+                                client_frame_gap,
                             );
                             if let Ok(mut map) = client_clients.lock() {
                                 map.remove(&id);
@@ -615,39 +736,55 @@ fn tcp_client_loop(
     running: Arc<AtomicBool>,
     recorder: Arc<Mutex<Option<Recording>>>,
     autosave: Arc<Mutex<AutoSave>>,
+    frame_gap: Arc<AtomicU64>,
 ) {
-    let _ = stream.set_read_timeout(Some(Duration::from_millis(120)));
+    let _ = stream.set_read_timeout(Some(Duration::from_millis(20)));
     let mut buf = [0u8; 8192];
     let mut total: u64 = 0;
+    let mut framer = FrameBuffer::new();
+    let mut framing = false;
 
     while running.load(Ordering::SeqCst) {
+        let gap = frame_gap.load(Ordering::Relaxed);
+
+        if gap > 0 && !framing {
+            framing = true;
+        } else if gap == 0 && framing {
+            if let Some(frame) = framer.take() {
+                emit_rx(&app, &recorder, &autosave, frame.ts, &frame.bytes, total);
+            }
+            framing = false;
+        }
+
         match stream.read(&mut buf) {
             Ok(0) => break,
             Ok(n) => {
                 total += n as u64;
-                let ts = now_ms();
-                let encoded = B64.encode(&buf[..n]);
-                let _ = app.emit(
-                    EV_DATA,
-                    DataPayload {
-                        ts,
-                        data: encoded,
-                        rx_total: total,
-                    },
-                );
-                record_chunk(&recorder, "rx", ts, &buf[..n]);
-                if let Ok(mut writer) = autosave.lock() {
-                    writer.append_rx(ts, &buf[..n]);
+                if gap > 0 {
+                    if let Some(frame) = framer.push(&buf[..n], Instant::now(), now_ms(), gap) {
+                        emit_rx(&app, &recorder, &autosave, frame.ts, &frame.bytes, total);
+                    }
+                } else {
+                    emit_rx(&app, &recorder, &autosave, now_ms(), &buf[..n], total);
                 }
             }
             Err(ref error)
                 if error.kind() == ErrorKind::WouldBlock
                     || error.kind() == ErrorKind::TimedOut =>
             {
+                if gap > 0 {
+                    if let Some(frame) = framer.poll(Instant::now(), gap) {
+                        emit_rx(&app, &recorder, &autosave, frame.ts, &frame.bytes, total);
+                    }
+                }
                 continue;
             }
             Err(_) => break,
         }
+    }
+
+    if let Some(frame) = framer.take() {
+        emit_rx(&app, &recorder, &autosave, frame.ts, &frame.bytes, total);
     }
 }
 
@@ -667,6 +804,28 @@ fn emit_tcp_clients(app: &AppHandle, clients: &Arc<Mutex<HashMap<u64, TcpStream>
             clients,
         },
     );
+}
+
+fn emit_rx(
+    app: &AppHandle,
+    recorder: &Arc<Mutex<Option<Recording>>>,
+    autosave: &Arc<Mutex<AutoSave>>,
+    ts: u64,
+    bytes: &[u8],
+    total: u64,
+) {
+    let _ = app.emit(
+        EV_DATA,
+        DataPayload {
+            ts,
+            data: B64.encode(bytes),
+            rx_total: total,
+        },
+    );
+    record_chunk(recorder, "rx", ts, bytes);
+    if let Ok(mut writer) = autosave.lock() {
+        writer.append_rx(ts, bytes);
+    }
 }
 
 fn record_chunk(recorder: &Arc<Mutex<Option<Recording>>>, kind: &str, ts: u64, bytes: &[u8]) {
@@ -758,4 +917,82 @@ fn now_ms() -> u64 {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_millis() as u64
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn frame_buffer_flushes_after_idle_gap() {
+        let base = Instant::now();
+        let mut buffer = FrameBuffer::new();
+        assert!(buffer.push(&[0x01, 0x03], base, 1_000, 30).is_none());
+        assert!(buffer.poll(base + Duration::from_millis(20), 30).is_none());
+
+        let frame = buffer
+            .poll(base + Duration::from_millis(30), 30)
+            .expect("idle gap should flush");
+        assert_eq!(frame.bytes, vec![0x01, 0x03]);
+        assert_eq!(frame.ts, 1_000);
+        assert!(buffer.is_empty());
+    }
+
+    #[test]
+    fn frame_buffer_starts_new_frame_after_gap() {
+        let base = Instant::now();
+        let mut buffer = FrameBuffer::new();
+        assert!(buffer.push(&[0x01], base, 1_000, 30).is_none());
+
+        let first = buffer
+            .push(&[0x02], base + Duration::from_millis(31), 1_031, 30)
+            .expect("new data after idle gap should close the old frame");
+        assert_eq!(first.bytes, vec![0x01]);
+
+        let second = buffer
+            .poll(base + Duration::from_millis(70), 30)
+            .expect("second frame should flush");
+        assert_eq!(second.bytes, vec![0x02]);
+        assert_eq!(second.ts, 1_031);
+    }
+
+    #[test]
+    fn frame_buffer_keeps_bytes_inside_the_gap() {
+        let base = Instant::now();
+        let mut buffer = FrameBuffer::new();
+        assert!(buffer.push(&[0x01], base, 1_000, 30).is_none());
+        assert!(
+            buffer
+                .push(&[0x02], base + Duration::from_millis(10), 1_010, 30)
+                .is_none()
+        );
+
+        let frame = buffer
+            .poll(base + Duration::from_millis(41), 30)
+            .expect("gap is measured from the last byte");
+        assert_eq!(frame.bytes, vec![0x01, 0x02]);
+    }
+
+    #[test]
+    fn frame_buffer_caps_long_frames() {
+        let base = Instant::now();
+        let mut buffer = FrameBuffer::new();
+        let data = vec![0xAA; FRAME_MAX_BYTES];
+        let frame = buffer
+            .push(&data, base, 1_000, 30)
+            .expect("max bytes should force a line");
+        assert_eq!(frame.bytes.len(), FRAME_MAX_BYTES);
+    }
+
+    #[test]
+    fn frame_buffer_caps_frame_age_without_idle() {
+        let base = Instant::now();
+        let mut buffer = FrameBuffer::new();
+        assert!(buffer.push(&[0x01], base, 1_000, 1_000).is_none());
+
+        let frame = buffer
+            .poll(base + Duration::from_millis(FRAME_MAX_AGE_MS + 1), 1_000)
+            .expect("max age should force a line");
+        assert_eq!(frame.bytes, vec![0x01]);
+    }
 }

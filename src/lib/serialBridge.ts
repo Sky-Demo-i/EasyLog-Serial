@@ -114,6 +114,12 @@ export async function setSignals(dtr: boolean, rts: boolean): Promise<void> {
   await invoke("set_signals", { dtr, rts });
 }
 
+/** 0 disables idle framing; >0 splits serial RX into one line per idle gap. */
+export async function setFrameGap(gapMs: number): Promise<void> {
+  if (!isTauri()) return;
+  await invoke("set_frame_gap", { gapMs });
+}
+
 export async function startRecording(
   portName: string,
   baudRate: number,
