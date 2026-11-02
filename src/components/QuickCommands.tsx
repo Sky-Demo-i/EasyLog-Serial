@@ -116,6 +116,11 @@ export default function QuickCommands({
     id: string;
     after: boolean;
   } | null>(null);
+  const [sortMenu, setSortMenu] = useState<{
+    id: string;
+    x: number;
+    y: number;
+  } | null>(null);
   const [tabMenu, setTabMenu] = useState<{
     x: number;
     y: number;
@@ -125,9 +130,18 @@ export default function QuickCommands({
   const draftNameRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const activeTabRef = useRef<HTMLButtonElement | null>(null);
   const quickListRef = useRef<HTMLDivElement>(null);
-  const draggingIdRef = useRef<string | null>(null);
   const dragScrollDirRef = useRef(0);
   const dragScrollRafRef = useRef<number | null>(null);
+  const pointerDragRef = useRef<{
+    id: string;
+    pointerId: number;
+    startX: number;
+    startY: number;
+    lastX: number;
+    lastY: number;
+    active: boolean;
+    handleRect: DOMRect;
+  } | null>(null);
 
   useEffect(() => {
     if (!tabMenu) return;
@@ -277,6 +291,39 @@ export default function QuickCommands({
     }
   };
 
+  const updateDropAt = (clientX: number, clientY: number) => {
+    const drag = pointerDragRef.current;
+    if (!drag?.active) return;
+    const element = document.elementFromPoint(clientX, clientY) as HTMLElement | null;
+    const row = element?.closest(".quick-item") as HTMLElement | null;
+    if (row?.dataset.id) {
+      const dragged = commands.find((command) => command.id === drag.id);
+      const target = commands.find((command) => command.id === row.dataset.id);
+      if (
+        !dragged ||
+        !target ||
+        dragged.id === target.id ||
+        categoryOf(dragged) !== categoryOf(target)
+      ) {
+        setDropTarget(null);
+        return;
+      }
+      const rect = row.getBoundingClientRect();
+      const after = clientY > rect.top + rect.height / 2;
+      setDropTarget((prev) =>
+        prev?.id === target.id && prev.after === after
+          ? prev
+          : { id: target.id, after },
+      );
+      return;
+    }
+    if (element?.closest(".quick-drop-tail")) {
+      setDropTarget({ id: "__tail__", after: true });
+      return;
+    }
+    setDropTarget(null);
+  };
+
   const updateDragScroll = (clientY: number) => {
     const list = quickListRef.current;
     if (!list) return;
@@ -302,16 +349,19 @@ export default function QuickCommands({
         return;
       }
       list.scrollTop += current * 16;
+      const drag = pointerDragRef.current;
+      if (drag) updateDropAt(drag.lastX, drag.lastY);
       dragScrollRafRef.current = window.requestAnimationFrame(tick);
     };
     dragScrollRafRef.current = window.requestAnimationFrame(tick);
   };
 
   const clearDrag = () => {
-    draggingIdRef.current = null;
+    pointerDragRef.current = null;
     setDraggingId(null);
     setDropTarget(null);
     stopDragScroll();
+    document.body.classList.remove("quick-dragging");
   };
 
   const reorderCommand = (dragId: string, targetId: string, after: boolean) => {
@@ -352,7 +402,115 @@ export default function QuickCommands({
     reorderCommand(command.id, ids[to], delta > 0);
   };
 
-  useEffect(() => () => stopDragScroll(), []);
+  const openSortMenu = (command: QuickCommand, rect: DOMRect) => {
+    const width = 132;
+    const height = 156;
+    const x = Math.min(
+      window.innerWidth - width - 8,
+      Math.max(8, rect.right - width),
+    );
+    const below = rect.bottom + 4;
+    const y =
+      below + height <= window.innerHeight
+        ? below
+        : Math.max(8, rect.top - height - 4);
+    setSortMenu({ id: command.id, x, y });
+  };
+
+  const removePointerListeners = () => {
+    window.removeEventListener("pointermove", handlePointerMove);
+    window.removeEventListener("pointerup", handlePointerUp);
+    window.removeEventListener("pointercancel", handlePointerCancel);
+  };
+
+  const handlePointerMove = (event: PointerEvent) => {
+    const drag = pointerDragRef.current;
+    if (!drag || event.pointerId !== drag.pointerId) return;
+    drag.lastX = event.clientX;
+    drag.lastY = event.clientY;
+    if (!drag.active) {
+      if (
+        Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) < 5
+      ) {
+        return;
+      }
+      drag.active = true;
+      setDraggingId(drag.id);
+      document.body.classList.add("quick-dragging");
+    }
+    event.preventDefault();
+    updateDropAt(event.clientX, event.clientY);
+    updateDragScroll(event.clientY);
+  };
+
+  const handlePointerUp = (event: PointerEvent) => {
+    const drag = pointerDragRef.current;
+    if (!drag || event.pointerId !== drag.pointerId) return;
+    removePointerListeners();
+    if (!drag.active) {
+      const command = commands.find((item) => item.id === drag.id);
+      clearDrag();
+      if (command) openSortMenu(command, drag.handleRect);
+      return;
+    }
+    const element = document.elementFromPoint(event.clientX, event.clientY) as HTMLElement | null;
+    const row = element?.closest(".quick-item") as HTMLElement | null;
+    if (row?.dataset.id) {
+      const rect = row.getBoundingClientRect();
+      reorderCommand(
+        drag.id,
+        row.dataset.id,
+        event.clientY > rect.top + rect.height / 2,
+      );
+    } else if (element?.closest(".quick-drop-tail")) {
+      const command = commands.find((item) => item.id === drag.id);
+      if (command) moveCommandToEdge(command, "bottom");
+    }
+    clearDrag();
+  };
+
+  const handlePointerCancel = () => {
+    removePointerListeners();
+    clearDrag();
+  };
+
+  const startPointerDrag = (
+    event: ReactPointerEvent<HTMLElement>,
+    command: QuickCommand,
+  ) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.focus();
+    pointerDragRef.current = {
+      id: command.id,
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      lastX: event.clientX,
+      lastY: event.clientY,
+      active: false,
+      handleRect: event.currentTarget.getBoundingClientRect(),
+    };
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", handlePointerUp);
+    window.addEventListener("pointercancel", handlePointerCancel);
+  };
+
+  useEffect(() => {
+    if (!sortMenu) return;
+    const close = () => setSortMenu(null);
+    document.addEventListener("pointerdown", close);
+    return () => document.removeEventListener("pointerdown", close);
+  }, [sortMenu]);
+
+  useEffect(
+    () => () => {
+      stopDragScroll();
+      removePointerListeners();
+    },
+    [],
+  );
 
   const openCategoryDialog = (
     mode:
@@ -609,36 +767,11 @@ export default function QuickCommands({
                 : ""
             }`}
             key={command.id}
+            data-id={command.id}
             title={`双击载入到发送框｜分类：${categoryOf(command)}｜${
               command.append === "global" ? "跟随发送框结尾" : `结尾 ${command.append}`
             }`}
             onDoubleClick={() => onLoad(command)}
-            onDragOver={(e) => {
-              const dragId = draggingIdRef.current;
-              if (!dragId) return;
-              const dragged = commands.find((item) => item.id === dragId);
-              if (!dragged || categoryOf(dragged) !== categoryOf(command)) return;
-              e.preventDefault();
-              e.dataTransfer.dropEffect = "move";
-              updateDragScroll(e.clientY);
-              const rect = e.currentTarget.getBoundingClientRect();
-              setDropTarget({
-                id: command.id,
-                after: e.clientY > rect.top + rect.height / 2,
-              });
-            }}
-            onDrop={(e) => {
-              const dragId = draggingIdRef.current;
-              if (!dragId) return;
-              e.preventDefault();
-              const rect = e.currentTarget.getBoundingClientRect();
-              reorderCommand(
-                dragId,
-                command.id,
-                e.clientY > rect.top + rect.height / 2,
-              );
-              clearDrag();
-            }}
           >
             <div className="quick-item-top">
               <input
@@ -744,19 +877,14 @@ export default function QuickCommands({
               </button>
               <span
                 className="quick-drag"
-                draggable
                 tabIndex={0}
-                title="拖动排序；Alt+↑/↓ 微调，Ctrl+Home/End 置顶/置底"
-                onDragStart={(e) => {
-                  draggingIdRef.current = command.id;
-                  setDraggingId(command.id);
-                  setDropTarget(null);
-                  e.dataTransfer.effectAllowed = "move";
-                  e.dataTransfer.setData("text/plain", command.id);
-                  const row = e.currentTarget.closest(".quick-item");
-                  if (row) e.dataTransfer.setDragImage(row, 24, 12);
+                title="拖动排序；单击打开快速移动菜单；Alt+↑/↓ 微调，Ctrl+Home/End 置顶/置底"
+                onPointerDown={(e) => startPointerDrag(e, command)}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  openSortMenu(command, e.currentTarget.getBoundingClientRect());
                 }}
-                onDragEnd={clearDrag}
                 onKeyDown={(e) => {
                   if (e.altKey && e.key === "ArrowUp") {
                     e.preventDefault();
@@ -800,21 +928,6 @@ export default function QuickCommands({
             className={`quick-drop-tail ${
               dropTarget?.id === "__tail__" ? "active" : ""
             }`}
-            onDragOver={(e) => {
-              if (!draggingIdRef.current) return;
-              e.preventDefault();
-              e.dataTransfer.dropEffect = "move";
-              updateDragScroll(e.clientY);
-              setDropTarget({ id: "__tail__", after: true });
-            }}
-            onDrop={(e) => {
-              const dragId = draggingIdRef.current;
-              if (!dragId) return;
-              e.preventDefault();
-              const dragged = commands.find((item) => item.id === dragId);
-              if (dragged) moveCommandToEdge(dragged, "bottom");
-              clearDrag();
-            }}
           >
             拖到这里移到本类末尾
           </div>
@@ -994,6 +1107,58 @@ export default function QuickCommands({
           </button>
         </div>
       )}
+      {sortMenu &&
+        (() => {
+          const command = commands.find((item) => item.id === sortMenu.id);
+          if (!command) return null;
+          return (
+            <div
+              className="quick-sort-menu"
+              style={{ left: sortMenu.x, top: sortMenu.y }}
+              onPointerDown={(e) => e.stopPropagation()}
+            >
+              <div className="quick-sort-title" title={command.name}>
+                {command.name || "未命名指令"}
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  moveCommandToEdge(command, "top");
+                  setSortMenu(null);
+                }}
+              >
+                移到顶部
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  moveCommand(command, -1);
+                  setSortMenu(null);
+                }}
+              >
+                上移一位
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  moveCommand(command, 1);
+                  setSortMenu(null);
+                }}
+              >
+                下移一位
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  moveCommandToEdge(command, "bottom");
+                  setSortMenu(null);
+                }}
+              >
+                移到底部
+              </button>
+            </div>
+          );
+        })()}
     </aside>
   );
 }

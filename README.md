@@ -1,6 +1,6 @@
 # EasyLog Serial
 
-EasyLogger 的配套串口工作台 · **lyg** · **v0.3.37**。Tauri 2 + React + Rust，Windows 10/11。
+EasyLogger 的配套串口工作台 · **lyg** · **v0.3.38**。Tauri 2 + React + Rust，Windows 10/11。
 
 ![界面预览（默认浅色，多分类同时展开）](docs/ui-v0318.png)
 
@@ -178,7 +178,9 @@ EasyLogger 的配套串口工作台 · **lyg** · **v0.3.37**。Tauri 2 + React 
 - 新建分类后该指令立即移入；导入/导出 JSON 会保留 `category`
 - 每个分类末尾固定有一行 **“＋ 新指令”**：填名称和内容后按回车或点“添加”，指令立即进入该分类，并自动再留一行空行继续添加
 - 每条指令右侧有 **⋮⋮ 拖动手柄**：直接拖到目标位置即可排序，拖到列表上下边缘会自动滚动，可一次从底部拖到顶部
+- 拖动使用 Pointer Events，不依赖 WebView 原生 HTML5 拖放；鼠标按住手柄移动即可
 - 拖动时显示插入线；拖到列表末尾的虚线区域可直接移到当前分类末尾
+- **单击或右键手柄**会弹出快速菜单：移到顶部 / 上移一位 / 下移一位 / 移到底部
 - 手柄聚焦后可用 **Alt+↑/↓** 微调，**Ctrl+Home / Ctrl+End** 一键置顶/置底
 - 序号相同执行时按当前列表顺序执行
 - 每条指令都有 **HEX / 文本** 切换；切到 HEX 时自动把当前文本转换为十六进制字节串，切回文本时解码
@@ -234,7 +236,7 @@ AT+CSQ
 
 ## 直接运行（免安装）
 
-免安装绿色版：[`release/EasyLog-Serial-0.3.37-portable.zip`](release/EasyLog-Serial-0.3.37-portable.zip)（约 2.0 MB）
+免安装绿色版：[`release/EasyLog-Serial-0.3.38-portable.zip`](release/EasyLog-Serial-0.3.38-portable.zip)（约 2.0 MB）
 
 - 解压到任意文件夹，双击 `EasyLogSerial.exe` 即可
 - 按住自定义标题栏空白处可拖动整个窗口；四边/四角可缩放
