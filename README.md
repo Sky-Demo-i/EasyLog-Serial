@@ -237,7 +237,7 @@ AT+CSQ
 
 ## 直接运行（免安装）
 
-免安装绿色版：[`release/EasyLog-Serial-0.4.0-portable.zip`](release/EasyLog-Serial-0.4.0-portable.zip)（约 3.1 MB）
+免安装绿色版：[GitHub Releases](https://github.com/Sky-Demo-i/EasyLog-Serial/releases/latest)（当前 v0.4.0，约 3.1 MB）
 
 - 解压到任意文件夹，双击 `EasyLogSerial.exe` 即可
 - 更新功能需要同目录的 `EasyLogSerialUpdater.exe`，不要单独只拷主程序
