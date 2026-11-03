@@ -10,6 +10,7 @@ import {
 import Toolbar from "./components/Toolbar";
 import AppTitleBar, { WindowResizeHandles } from "./components/AppTitleBar";
 import UpdateDialog from "./components/UpdateDialog";
+import DonateDialog from "./components/DonateDialog";
 import LogView, { highlightText } from "./components/LogView";
 import LogHeader from "./components/LogHeader";
 import SendPane from "./components/SendPane";
@@ -377,6 +378,7 @@ export default function App() {
   const [waitingReconnect, setWaitingReconnect] = useState(false);
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
+  const [donateOpen, setDonateOpen] = useState(false);
   const [status, setStatus] = useState("就绪");
   const [paused, setPaused] = useState(false);
   const [stats, setStats] = useState({ rx: 0, tx: 0 });
@@ -1755,6 +1757,7 @@ export default function App() {
     >
       <AppTitleBar
         onCheckUpdate={() => void checkForUpdates(false)}
+        onDonate={() => setDonateOpen(true)}
         updateAvailable={Boolean(updateInfo)}
         checking={checkingUpdate}
       />
@@ -2333,6 +2336,7 @@ export default function App() {
       {updateInfo && (
         <UpdateDialog info={updateInfo} onClose={() => setUpdateInfo(null)} />
       )}
+      {donateOpen && <DonateDialog onClose={() => setDonateOpen(false)} />}
 
       <StatusBar
         connected={connected}

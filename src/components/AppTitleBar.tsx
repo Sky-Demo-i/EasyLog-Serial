@@ -45,10 +45,12 @@ export function WindowResizeHandles() {
 
 export default function AppTitleBar({
   onCheckUpdate,
+  onDonate,
   updateAvailable = false,
   checking = false,
 }: {
   onCheckUpdate?: () => void;
+  onDonate?: () => void;
   updateAvailable?: boolean;
   checking?: boolean;
 }) {
@@ -72,7 +74,7 @@ export default function AppTitleBar({
         <span className="app-mark">EL</span>
         <span className="app-brand-name">EasyLog Serial</span>
         <span className="app-brand-sub">串口工作台</span>
-        <span className="app-author">lyg · v0.4.0</span>
+        <span className="app-author">lyg · v0.4.1</span>
       </div>
       <span className="app-titlebar-spacer" />
       <button
@@ -83,6 +85,14 @@ export default function AppTitleBar({
         onClick={() => onCheckUpdate?.()}
       >
         {checking ? "检查中…" : updateAvailable ? "发现新版本" : "检查更新"}
+      </button>
+      <button
+        type="button"
+        className="titlebar-donate"
+        title="赞赏作者"
+        onClick={() => onDonate?.()}
+      >
+        赞赏作者
       </button>
       <div className="window-controls">
         <button

@@ -231,6 +231,62 @@ input[type="checkbox"] {
   cursor: wait;
 }
 
+.titlebar-donate {
+  height: 24px;
+  margin-right: 6px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 10.5px;
+}
+
+.titlebar-donate:hover {
+  border-color: #e6a23c;
+  color: #e6a23c;
+}
+
+.donate-dialog {
+  width: min(390px, calc(100vw - 40px));
+  max-height: calc(100vh - 40px);
+  overflow: auto;
+  text-align: center;
+}
+
+.donate-copy {
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.7;
+  text-align: left;
+}
+
+.donate-qr-wrap {
+  margin-top: 10px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.donate-qr {
+  display: block;
+  width: min(280px, 100%);
+  height: auto;
+  margin: 0 auto;
+}
+
+.donate-tip {
+  margin-top: 8px;
+  color: var(--faint);
+  font-size: 11px;
+}
+
+.donate-dialog .update-actions {
+  justify-content: center;
+}
+
 .update-backdrop {
   position: fixed;
   inset: 0;
