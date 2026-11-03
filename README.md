@@ -1,6 +1,6 @@
 # EasyLog Serial
 
-EasyLogger 的配套串口工作台 · **lyg** · **v0.3.39**。Tauri 2 + React + Rust，Windows 10/11。
+EasyLogger 的配套串口工作台 · **lyg** · **v0.4.0**。Tauri 2 + React + Rust，Windows 10/11。
 
 ![界面预览（默认浅色，多分类同时展开）](docs/ui-v0318.png)
 
@@ -237,15 +237,65 @@ AT+CSQ
 
 ## 直接运行（免安装）
 
-免安装绿色版：[`release/EasyLog-Serial-0.3.39-portable.zip`](release/EasyLog-Serial-0.3.39-portable.zip)（约 2.0 MB）
+免安装绿色版：[`release/EasyLog-Serial-0.4.0-portable.zip`](release/EasyLog-Serial-0.4.0-portable.zip)（约 3.1 MB）
 
 - 解压到任意文件夹，双击 `EasyLogSerial.exe` 即可
+- 更新功能需要同目录的 `EasyLogSerialUpdater.exe`，不要单独只拷主程序
 - 按住自定义标题栏空白处可拖动整个窗口；四边/四角可缩放
 - 必须同时保留 `WebView2Loader.dll`，不能只拷 exe
 - 需要 WebView2 Runtime（Windows 10/11 一般已自带）
 - 自动录制写在解压目录的 `logs\auto` 下；整个文件夹可以直接拷走使用
 
 > 不提供安装版；本项目只发布免安装便携包。
+
+## 自动更新（GitHub Releases）
+
+更新源仓库：[`Sky-Demo-i/EasyLog-Serial`](https://github.com/Sky-Demo-i/EasyLog-Serial)
+
+- 程序启动后每 6 小时最多检查一次，标题栏也有 **检查更新** 按钮
+- 检查地址固定为
+  `https://github.com/Sky-Demo-i/EasyLog-Serial/releases/latest/download/latest.json`
+- 下载新版便携 ZIP 后校验 SHA256，再启动独立的 `EasyLogSerialUpdater.exe`
+- 主程序退出后由更新器备份、替换、重启；`logs` 和本地配置保留
+- 不需要自建服务器，GitHub Releases 同时充当更新源和 CDN
+- 便携目录需要可写；放在只读目录时更新会失败并重新启动旧版本
+
+### 发布新版本
+
+1. 修改 8 处版本号（见 `AGENTS.md`），并更新说明
+2. 运行发布脚本：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/release.ps1 -Version 0.4.1 -Notes "修复..."
+```
+
+脚本会构建主程序和 `EasyLogSerialUpdater.exe`，生成：
+
+```text
+release/EasyLog-Serial-0.4.1-portable.zip
+release/latest.json
+```
+
+3. 在 GitHub 创建 Release，tag 用 `v0.4.1`
+4. 上传 **两个文件**：便携 ZIP、`latest.json`
+5. `latest.json` 必须作为 Release asset 上传；程序通过 `latest/download/latest.json` 读取
+
+`latest.json` 格式：
+
+```json
+{
+  "version": "0.4.1",
+  "notes": "修复内容",
+  "pubDate": "2026-11-04T10:00:00Z",
+  "url": "https://github.com/Sky-Demo-i/EasyLog-Serial/releases/download/v0.4.1/EasyLog-Serial-0.4.1-portable.zip",
+  "size": 2100000,
+  "sha256": "……",
+  "mandatory": false
+}
+```
+
+> 目前仓库是 public；如果改成 private，内置下载会失效。
+> 第一版带更新器的版本（0.4.0）需要手动下载安装一次，之后才能自动更新。
 
 ## 源码构建
 
@@ -268,9 +318,11 @@ cd src-tauri
 cargo build
 .\target\debug\easylog-serial.exe
 
-# 发布（必须带 custom-protocol，否则会以 dev 模式去连 localhost:1420，脱离 Vite 后白屏）
+# 发布（含 updater helper）
 cargo build --release --features custom-protocol
-# 产物：target/release/easylog-serial.exe + WebView2Loader.dll（两者必须放一起）
+cargo build --release --manifest-path src-tauri/updater/Cargo.toml
+# 或直接运行 scripts/release.ps1
+# 产物：target/release/easylog-serial.exe + WebView2Loader.dll
 ```
 
 四个 GNU 特有的坑（已处理）：
@@ -293,7 +345,11 @@ src/                      React 界面
   App.tsx                 状态与串口事件编排
 src-tauri/
   src/serial.rs           串口管理器（读线程、事件、背压、会话录制）
+  src/updater.rs          GitHub 更新检查、下载校验、启动更新器
   src/lib.rs              Tauri 命令注册
+  updater/                独立 EasyLogSerialUpdater.exe（等待退出、备份替换、重启）
+scripts/
+  release.ps1             打包 + SHA256 + latest.json + 发布提示
 docs/
   串口工具调研报告.md      市场调研
   上位机设计方案.md        功能清单、架构、解析规格、里程碑
@@ -305,7 +361,7 @@ tools/
 ## 测试
 
 ```powershell
-node node_modules/vitest/vitest.mjs run        # 57 个前端单测
+node node_modules/vitest/vitest.mjs run        # 68 个前端单测
 python tools/elog_parse.py --selftest          # 解析器自测
 ```
 

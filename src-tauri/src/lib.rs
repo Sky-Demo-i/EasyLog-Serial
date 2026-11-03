@@ -1,5 +1,6 @@
 mod autosave;
 mod serial;
+mod updater;
 
 use autosave::AutoSaveInfo;
 use serial::{
@@ -162,7 +163,10 @@ pub fn run() {
             export_commands,
             set_frame_gap,
             set_autosave,
-            autosave_info
+            autosave_info,
+            updater::check_update,
+            updater::download_update,
+            updater::install_update
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

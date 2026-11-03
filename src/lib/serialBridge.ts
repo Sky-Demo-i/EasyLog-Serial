@@ -6,6 +6,8 @@ import type {
   SerialConfig,
   SerialDataPayload,
   SerialStatePayload,
+  UpdateInfo,
+  UpdateProgress,
 } from "../types";
 import { bytesToBase64 } from "./format";
 
@@ -146,6 +148,32 @@ export async function exportCommands(
 ): Promise<string | null> {
   if (!isTauri()) return null;
   return invoke<string | null>("export_commands", { content, suggestedName });
+}
+
+export async function checkUpdate(): Promise<UpdateInfo | null> {
+  if (!isTauri()) return null;
+  return invoke<UpdateInfo | null>("check_update");
+}
+
+export async function downloadUpdate(
+  url: string,
+  sha256: string,
+  version: string,
+): Promise<string> {
+  if (!isTauri()) throw new Error("浏览器模式不支持自动更新");
+  return invoke<string>("download_update", { url, sha256, version });
+}
+
+export async function installUpdate(zipPath: string): Promise<void> {
+  if (!isTauri()) throw new Error("浏览器模式不支持自动更新");
+  await invoke("install_update", { zipPath });
+}
+
+export async function onUpdateProgress(
+  cb: (payload: UpdateProgress) => void,
+): Promise<() => void> {
+  if (!isTauri()) return () => {};
+  return listen<UpdateProgress>("update://progress", (event) => cb(event.payload));
 }
 
 export interface TcpClientsPayload {

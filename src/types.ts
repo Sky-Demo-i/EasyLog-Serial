@@ -7,6 +7,22 @@ export type Encoding = "utf-8" | "gbk";
 export type LineDir = "rx" | "tx" | "sys";
 export type LogLevel = "A" | "E" | "W" | "I" | "D" | "V" | "?";
 
+export interface UpdateInfo {
+  currentVersion: string;
+  version: string;
+  notes: string;
+  pubDate: string;
+  size: number;
+  url: string;
+  sha256: string;
+  mandatory: boolean;
+}
+
+export interface UpdateProgress {
+  downloaded: number;
+  total: number;
+}
+
 export interface PortInfo {
   name: string;
   kind: string;

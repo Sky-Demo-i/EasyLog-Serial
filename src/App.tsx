@@ -9,6 +9,7 @@ import {
 } from "react";
 import Toolbar from "./components/Toolbar";
 import AppTitleBar, { WindowResizeHandles } from "./components/AppTitleBar";
+import UpdateDialog from "./components/UpdateDialog";
 import LogView, { highlightText } from "./components/LogView";
 import LogHeader from "./components/LogHeader";
 import SendPane from "./components/SendPane";
@@ -27,6 +28,7 @@ import type {
   QuickCommand,
   SerialConfig,
   SerialDataPayload,
+  UpdateInfo,
 } from "./types";
 import {
   base64ToBytes,
@@ -373,6 +375,8 @@ export default function App() {
   const [connected, setConnected] = useState(false);
   const [busy, setBusy] = useState(false);
   const [waitingReconnect, setWaitingReconnect] = useState(false);
+  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [status, setStatus] = useState("就绪");
   const [paused, setPaused] = useState(false);
   const [stats, setStats] = useState({ rx: 0, tx: 0 });
@@ -437,6 +441,7 @@ export default function App() {
   const pausedRef = useRef(paused);
   const connectedRef = useRef(connected);
   const logSelectAllRef = useRef(logSelectAll);
+  const checkingUpdateRef = useRef(false);
   const loopRef = useRef(false);
   const commandsRef = useRef(commands);
   commandsRef.current = commands;
@@ -1674,6 +1679,42 @@ export default function App() {
     setStatus(`已导出 ${commands.length} 条指令`);
   };
 
+  const checkForUpdates = useCallback(async (silent = false) => {
+    if (!bridge.isTauri()) {
+      if (!silent) setStatus("浏览器模式不支持自动更新，请在正式版中检查");
+      return;
+    }
+    if (checkingUpdateRef.current) return;
+    checkingUpdateRef.current = true;
+    setCheckingUpdate(true);
+    if (!silent) setStatus("正在检查更新…");
+    try {
+      const info = await bridge.checkUpdate();
+      if (info) {
+        setUpdateInfo(info);
+        setStatus(`发现新版本 v${info.version}（当前 v${info.currentVersion}）`);
+      } else if (!silent) {
+        setStatus("已是最新版本");
+      }
+    } catch (error) {
+      if (!silent) setStatus(`检查更新失败：${normalizeError(error)}`);
+    } finally {
+      checkingUpdateRef.current = false;
+      setCheckingUpdate(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!bridge.isTauri()) return;
+    const last = Number(localStorage.getItem("easylog.update.lastCheck") || 0);
+    if (last && Date.now() - last < 6 * 60 * 60 * 1000) return;
+    const timer = window.setTimeout(() => {
+      localStorage.setItem("easylog.update.lastCheck", String(Date.now()));
+      void checkForUpdates(true);
+    }, 3000);
+    return () => window.clearTimeout(timer);
+  }, [checkForUpdates]);
+
   function switchTransport(next: "serial" | "tcp") {
     if (connected || next === transport) return;
     clearReconnectTimer();
@@ -1712,7 +1753,11 @@ export default function App() {
         if (logSelectAll) setLogSelectAll(false);
       }}
     >
-      <AppTitleBar />
+      <AppTitleBar
+        onCheckUpdate={() => void checkForUpdates(false)}
+        updateAvailable={Boolean(updateInfo)}
+        checking={checkingUpdate}
+      />
       <WindowResizeHandles />
       <Toolbar
         ports={ports}
@@ -2283,6 +2328,10 @@ export default function App() {
             </>
           )}
         </div>
+      )}
+
+      {updateInfo && (
+        <UpdateDialog info={updateInfo} onClose={() => setUpdateInfo(null)} />
       )}
 
       <StatusBar

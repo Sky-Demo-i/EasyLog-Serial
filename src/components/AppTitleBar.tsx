@@ -43,7 +43,15 @@ export function WindowResizeHandles() {
   );
 }
 
-export default function AppTitleBar() {
+export default function AppTitleBar({
+  onCheckUpdate,
+  updateAvailable = false,
+  checking = false,
+}: {
+  onCheckUpdate?: () => void;
+  updateAvailable?: boolean;
+  checking?: boolean;
+}) {
   const startDrag = (event: ReactPointerEvent<HTMLElement>) => {
     if (event.button !== 0 || !appWindow) return;
     if ((event.target as HTMLElement).closest("button")) return;
@@ -64,9 +72,18 @@ export default function AppTitleBar() {
         <span className="app-mark">EL</span>
         <span className="app-brand-name">EasyLog Serial</span>
         <span className="app-brand-sub">串口工作台</span>
-        <span className="app-author">lyg · v0.3.39</span>
+        <span className="app-author">lyg · v0.4.0</span>
       </div>
       <span className="app-titlebar-spacer" />
+      <button
+        type="button"
+        className={`titlebar-update ${updateAvailable ? "available" : ""}`}
+        title="检查 GitHub Releases 上的新版本"
+        disabled={checking}
+        onClick={() => onCheckUpdate?.()}
+      >
+        {checking ? "检查中…" : updateAvailable ? "发现新版本" : "检查更新"}
+      </button>
       <div className="window-controls">
         <button
           type="button"

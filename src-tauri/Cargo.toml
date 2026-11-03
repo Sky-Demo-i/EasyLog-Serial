@@ -1,6 +1,6 @@
 [package]
 name = "easylog-serial"
-version = "0.3.39"
+version = "0.4.0"
 description = "EasyLog Serial - serial port workbench for EasyLogger"
 authors = ["lyg"]
 edition = "2024"
@@ -28,6 +28,9 @@ serialport = "4"
 base64 = "0.22"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 rfd = "0.15"
+ureq = { version = "2", default-features = false, features = ["tls", "json", "gzip"] }
+sha2 = "0.10"
+semver = "1"
 
 [profile.release]
 codegen-units = 1
