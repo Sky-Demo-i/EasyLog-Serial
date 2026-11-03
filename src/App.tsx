@@ -139,7 +139,7 @@ const DEFAULT_OPTIONS: DisplayOptions = {
   lineWidth: 44,
   tickWidth: 88,
   filterWidth: 220,
-  quickWidth: 440,
+  quickWidth: 640,
   sendHeight: 172,
 };
 
@@ -166,7 +166,7 @@ function loadOptions(): DisplayOptions {
     // EasyLog and 原始 are mutually exclusive. EasyLog parses/cleans ANSI;
     // 原始 keeps the stream untouched.
     merged.ansiRaw = !merged.elogMode;
-    if (merged.quickWidth < 420) merged.quickWidth = 440;
+    if (merged.quickWidth < 620) merged.quickWidth = 640;
     const gap = Number(merged.hexFrameGapMs);
     merged.hexFrameGapMs = Number.isFinite(gap)
       ? Math.min(2000, Math.max(5, Math.round(gap)))

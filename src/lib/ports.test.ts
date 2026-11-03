@@ -15,30 +15,21 @@ const ch340: PortInfo = {
 const com1: PortInfo = { name: "COM1", kind: "串口" };
 
 describe("findReconnectPort", () => {
-  it("prefers the serial number over the old COM name", () => {
+  it("stays on the exact same COM name", () => {
+    expect(findReconnectPort([com1, ch340], ch340)?.name).toBe("COM5");
+  });
+
+  it("does not follow the same USB adapter to another COM name", () => {
+    const moved = { ...ch340, name: "COM3" };
+    expect(findReconnectPort([com1, moved], ch340)).toBeUndefined();
+  });
+
+  it("does not follow a matching serial number to another COM name", () => {
     const moved = { ...ch340, name: "COM7" };
-    expect(findReconnectPort([com1, moved], ch340)?.name).toBe("COM7");
+    expect(findReconnectPort([com1, moved], ch340)).toBeUndefined();
   });
 
-  it("matches a unique VID/PID when there is no serial number", () => {
-    const remembered = { ...ch340, serialNumber: undefined };
-    const moved = { ...remembered, name: "COM7" };
-    expect(findReconnectPort([com1, moved], remembered)?.name).toBe("COM7");
-  });
-
-  it("uses product to disambiguate identical adapters", () => {
-    const remembered = { ...ch340, serialNumber: undefined, product: "Adapter B" };
-    const other = { ...remembered, name: "COM7", product: "Adapter A" };
-    const moved = { ...remembered, name: "COM8", product: "Adapter B" };
-    expect(findReconnectPort([other, moved], remembered)?.name).toBe("COM8");
-  });
-
-  it("falls back to the same COM name", () => {
-    const replaced = { ...ch340, serialNumber: "OTHER", vid: 0x9999 };
-    expect(findReconnectPort([com1, replaced], ch340)?.name).toBe("COM5");
-  });
-
-  it("returns nothing when neither identity nor name matches", () => {
+  it("returns nothing while the original COM name is absent", () => {
     expect(findReconnectPort([com1], ch340)).toBeUndefined();
   });
 });

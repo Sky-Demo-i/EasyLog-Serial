@@ -165,7 +165,7 @@ export default function QuickCommands({
 
     const move = (moveEvent: PointerEvent) => {
       const next = Math.round(
-        Math.min(620, Math.max(300, startWidth - (moveEvent.clientX - startX))),
+        Math.min(760, Math.max(300, startWidth - (moveEvent.clientX - startX))),
       );
       onWidthChange(next);
     };
@@ -655,9 +655,9 @@ export default function QuickCommands({
         <button
           onClick={resetOrder}
           disabled={!commands.some((command) => (command.order ?? 0) !== 0)}
-          title="把所有指令的循环序号归 0"
+          title="把所有指令的循环序号设为 0（不参与循环）"
         >
-          全部归0
+          序号清零
         </button>
         <input
           ref={fileRef}
@@ -854,19 +854,20 @@ export default function QuickCommands({
                 HEX
               </button>
               <button
+                type="button"
+                className="quick-send"
+                title="发送这条指令"
+                disabled={!connected}
+                onClick={() => onSend(command)}
+              >
+                发送
+              </button>
+              <button
                 className="icon-btn"
                 title="载入到发送框"
                 onClick={() => onLoad(command)}
               >
                 ↧
-              </button>
-              <button
-                className="icon-btn"
-                title="发送"
-                disabled={!connected}
-                onClick={() => onSend(command)}
-              >
-                ▶
               </button>
               <button
                 className="icon-btn danger"
