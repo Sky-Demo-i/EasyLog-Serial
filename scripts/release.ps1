@@ -12,6 +12,15 @@ if ($Version -notmatch '^\d+\.\d+\.\d+$') {
   throw "版本号必须形如 0.4.0"
 }
 
+$cargoVersion = (Select-String -Path "$root\src-tauri\Cargo.toml" -Pattern '^version\s*=\s*"([^"]+)"').Matches.Groups[1].Value
+if ($cargoVersion -ne $Version) {
+  throw "Cargo.toml 版本是 $cargoVersion，与发布版本 $Version 不一致"
+}
+$helperVersion = (Select-String -Path "$root\src-tauri\updater\Cargo.toml" -Pattern '^version\s*=\s*"([^"]+)"').Matches.Groups[1].Value
+if ($helperVersion -ne $Version) {
+  throw "updater/Cargo.toml 版本是 $helperVersion，与发布版本 $Version 不一致"
+}
+
 $pkg = "$root\release\EasyLog-Serial-$Version-portable"
 $zip = "$root\release\EasyLog-Serial-$Version-portable.zip"
 $manifest = "$root\release\latest.json"
