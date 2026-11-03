@@ -110,6 +110,6 @@ cargo build --release --manifest-path updater/Cargo.toml
 
 **赞赏完全自愿，不影响任何功能，也不构成商业服务承诺。**
 
-![微信赞赏码](public/donate-wechat.jpg)
+<img src="public/donate-wechat.jpg" width="260" alt="微信赞赏码" />
 
 感谢支持。
