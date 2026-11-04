@@ -310,6 +310,7 @@ export default function LogView({
         style={{ fontSize }}
         onMouseDown={(event) => {
           if (event.button !== 0) return;
+          if (!(event.target as HTMLElement).closest(".log-row")) return;
           if (!frozen) {
             setFrozen({ lines: lines.slice(), partial });
           }
