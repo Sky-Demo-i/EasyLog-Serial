@@ -50,6 +50,8 @@ export interface ConnectOptions {
   wakeEnabled: boolean;
   /** Plain text; supports \\r \\n \\xNN escapes. */
   wakeText: string;
+  /** Retry the same COM name after an unexpected disconnect. Off by default. */
+  autoReconnect: boolean;
 }
 
 export interface QuickCommand {

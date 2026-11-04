@@ -348,6 +348,19 @@ export default function Toolbar({
                   />
                   RTS
                 </label>
+                <label
+                  className="check"
+                  title="异常断开后自动重试原 COM 名。默认关闭；开启后每次重连会重新创建自动保存文件。"
+                >
+                  <input
+                    type="checkbox"
+                    checked={connectOptions.autoReconnect}
+                    onChange={(e) =>
+                      onConnectOptionsChange({ autoReconnect: e.target.checked })
+                    }
+                  />
+                  断线自动回连
+                </label>
               </div>
             </div>
           )}

@@ -1,6 +1,6 @@
 # EasyLog Serial
 
-EasyLogger 配套的 Windows 串口工作台 · **lyg** · **v0.4.2**
+EasyLogger 配套的 Windows 串口工作台 · **lyg** · **v0.4.3**
 
 [下载最新版](https://github.com/Sky-Demo-i/EasyLog-Serial/releases/latest) ·
 [问题反馈](https://github.com/Sky-Demo-i/EasyLog-Serial/issues)

@@ -149,6 +149,7 @@ const DEFAULT_OPTIONS: DisplayOptions = {
 const DEFAULT_CONNECT: ConnectOptions = {
   wakeEnabled: false,
   wakeText: "2",
+  autoReconnect: false,
 };
 
 function loadConfig(): SerialConfig {
@@ -459,6 +460,7 @@ export default function App() {
   const tcpPortRef = useRef(tcpPort);
   const serialTimestampRef = useRef(options.timestamp);
   const statsRef = useRef(stats);
+  const statsTimerRef = useRef<number | null>(null);
   const sendParamsRef = useRef({ text: sendText, hex: sendHex, append });
 
   optionsRef.current = options;
@@ -469,7 +471,6 @@ export default function App() {
   logSelectAllRef.current = logSelectAll;
   transportRef.current = transport;
   tcpPortRef.current = tcpPort;
-  statsRef.current = stats;
   sendParamsRef.current = { text: sendText, hex: sendHex, append };
 
   const view = useMemo(
@@ -542,6 +543,14 @@ export default function App() {
     }, 16);
   }, []);
 
+  const flushStats = useCallback(() => {
+    if (statsTimerRef.current !== null) return;
+    statsTimerRef.current = window.setTimeout(() => {
+      statsTimerRef.current = null;
+      setStats({ ...statsRef.current });
+    }, 200);
+  }, []);
+
   const flushPartial = useCallback(() => {
     if (partialTimerRef.current !== null) {
       window.clearTimeout(partialTimerRef.current);
@@ -590,7 +599,11 @@ export default function App() {
         if (txId !== null) scheduleRender();
         try {
           await bridge.writePort(bytesToBase64(payload));
-          setStats((prev) => ({ ...prev, tx: prev.tx + payload.length }));
+          statsRef.current = {
+            ...statsRef.current,
+            tx: statsRef.current.tx + payload.length,
+          };
+          flushStats();
           setStatus(`${base}，已发送激活字符 "${wakeText}"`);
         } catch (error) {
           if (txId !== null) {
@@ -611,7 +624,8 @@ export default function App() {
       reconnectTimerRef.current !== null ||
       manualDisconnectRef.current ||
       transportRef.current !== "serial" ||
-      !configRef.current.portName
+      !configRef.current.portName ||
+      !connectOptionsRef.current.autoReconnect
     ) {
       return;
     }
@@ -627,7 +641,8 @@ export default function App() {
       if (
         manualDisconnectRef.current ||
         transportRef.current !== "serial" ||
-        !configRef.current.portName
+        !configRef.current.portName ||
+        !connectOptionsRef.current.autoReconnect
       ) {
         reconnectingRef.current = false;
         setWaitingReconnect(false);
@@ -769,7 +784,11 @@ export default function App() {
       } catch {
         return;
       }
-      setStats((prev) => ({ ...prev, rx: prev.rx + bytes.length }));
+      statsRef.current = {
+        ...statsRef.current,
+        rx: statsRef.current.rx + bytes.length,
+      };
+      flushStats();
       if (pausedRef.current) return;
       if (optionsRef.current.hex) {
         // Rust ends each payload at an idle gap, so one payload is one frame.
@@ -840,6 +859,7 @@ export default function App() {
       stopReplay(true);
       resetStream();
       storeRef.current.clear();
+      statsRef.current = { rx: 0, tx: 0 };
       setStats({ rx: 0, tx: 0 });
       setPaused(false);
       pausedRef.current = false;
@@ -1190,6 +1210,10 @@ export default function App() {
         window.clearTimeout(partialTimerRef.current);
         partialTimerRef.current = null;
       }
+      if (statsTimerRef.current !== null) {
+        window.clearTimeout(statsTimerRef.current);
+        statsTimerRef.current = null;
+      }
       void bridge.stopRecording().catch(() => {});
     };
   }, []);
@@ -1246,7 +1270,11 @@ export default function App() {
         } else {
           await bridge.writePort(bytesToBase64(payload));
         }
-        setStats((prev) => ({ ...prev, tx: prev.tx + payload.length }));
+        statsRef.current = {
+          ...statsRef.current,
+          tx: statsRef.current.tx + payload.length,
+        };
+        flushStats();
         maybeWarnFilter();
         return true;
       } catch (error) {

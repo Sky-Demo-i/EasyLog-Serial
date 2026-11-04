@@ -1,4 +1,4 @@
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import type { DisplayOptions, KeywordColorRule, LogEntry } from "../types";
 import { formatTime } from "../lib/format";
@@ -88,6 +88,14 @@ export default function LogView({
   const viewportRef = useRef<HTMLDivElement>(null);
   const [height, setHeight] = useState(0);
   const [scrollTop, setScrollTop] = useState(0);
+  // Keep the DOM stable while the user is selecting. Live batching replaces
+  // virtual rows and drops the browser selection otherwise.
+  const [frozen, setFrozen] = useState<{
+    lines: LogEntry[];
+    partial: string;
+  } | null>(null);
+  const displayLines = frozen ? frozen.lines : lines;
+  const displayPartial = frozen ? frozen.partial : partial;
   const fontSize = options.logFontSize || 13;
   const rowHeight = Math.max(26, Math.round(fontSize * 2.2));
   const timeWidth = Math.max(options.timeWidth, Math.ceil(fontSize * 8.4));
@@ -100,13 +108,14 @@ export default function LogView({
   const contentWidth = useMemo(() => {
     // Measuring every historical line on each batch is the main render cost at
     // high log rates. The newest window is enough for horizontal scroll sizing.
-    const sample = lines.length > 600 ? lines.slice(-600) : lines;
+    const sample =
+      displayLines.length > 600 ? displayLines.slice(-600) : displayLines;
     let longest = "";
     for (const entry of sample) {
       const display = options.elogMode ? entry.message : entry.text;
       if (display.length > longest.length) longest = display;
     }
-    if (partial.length > longest.length) longest = partial;
+    if (displayPartial.length > longest.length) longest = displayPartial;
 
     const gap = 7;
     const pad = 20;
@@ -129,8 +138,8 @@ export default function LogView({
     const messageWidth = Math.max(260, Math.ceil(measurePx(longest, fontSize)) + 16);
     return Math.min(30000, Math.max(560, fixed + messageWidth + pad));
   }, [
-    lines,
-    partial,
+    displayLines,
+    displayPartial,
     fontSize,
     timeWidth,
     dirWidth,
@@ -154,20 +163,22 @@ export default function LogView({
     return () => observer.disconnect();
   }, []);
 
-  const lastTs = lines.length ? lines[lines.length - 1].ts : Date.now();
+  const lastTs = displayLines.length
+    ? displayLines[displayLines.length - 1].ts
+    : Date.now();
   let partialEntry: LogEntry | null = null;
-  if (partial) {
-    const base = makeEntry(lastTs, "rx", partial, options.elogMode);
+  if (displayPartial) {
+    const base = makeEntry(lastTs, "rx", displayPartial, options.elogMode);
     partialEntry = { ...base, id: -1, message: `${base.message}▍` };
   }
 
-  const total = lines.length + (partialEntry ? 1 : 0);
+  const total = displayLines.length + (partialEntry ? 1 : 0);
 
   useLayoutEffect(() => {
     const el = viewportRef.current;
-    if (!el || !options.autoScroll) return;
+    if (!el || !options.autoScroll || frozen) return;
     el.scrollTop = el.scrollHeight;
-  }, [lines.length, partial, options.autoScroll, height, rowHeight]);
+  }, [displayLines.length, displayPartial, options.autoScroll, frozen, height, rowHeight]);
 
   useLayoutEffect(() => {
     const el = viewportRef.current;
@@ -178,20 +189,41 @@ export default function LogView({
     );
   }, [scrollToken, activeMatchRow, rowHeight]);
 
+  useEffect(() => {
+    if (!frozen) return;
+    const leave = (event: PointerEvent) => {
+      if (viewportRef.current?.contains(event.target as Node)) return;
+      setFrozen(null);
+      window.getSelection()?.removeAllRanges();
+    };
+    const escape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setFrozen(null);
+      window.getSelection()?.removeAllRanges();
+    };
+    document.addEventListener("pointerdown", leave, true);
+    document.addEventListener("keydown", escape);
+    return () => {
+      document.removeEventListener("pointerdown", leave, true);
+      document.removeEventListener("keydown", escape);
+    };
+  }, [frozen]);
+
   const visibleCount = Math.max(1, Math.ceil((height || 600) / rowHeight));
   const effectiveScrollTop = Math.max(0, scrollTop - HEADER_HEIGHT);
   // When following the tail, render the newest rows immediately instead of
   // waiting for the programmatic scroll event to update scrollTop. Otherwise a
   // batch can paint from the old position and then jump to the bottom.
-  const start = options.autoScroll
+  const following = options.autoScroll && !frozen;
+  const start = following
     ? Math.max(0, total - visibleCount - 2)
     : Math.max(0, Math.floor(effectiveScrollTop / rowHeight) - 8);
   const end = Math.min(total, start + visibleCount + 16);
 
   const rows = [];
   for (let index = start; index < end; index++) {
-    const isPartial = index >= lines.length;
-    const entry = isPartial ? partialEntry! : lines[index];
+    const isPartial = index >= displayLines.length;
+    const entry = isPartial ? partialEntry! : displayLines[index];
     const displayText = showMeta ? entry.message : entry.text;
     const customColor = keywordColor(entry, colorRules);
     const dim =
@@ -270,37 +302,62 @@ export default function LogView({
   }
 
   return (
-    <div
-      className={`log-viewport ${selectAll ? "log-select-all" : ""}`}
-      ref={viewportRef}
-      tabIndex={0}
-      style={{ fontSize }}
-      onWheel={(event) => {
-        if (event.deltaY < 0 && options.autoScroll) onAutoScrollChange(false);
-      }}
-      onScroll={(event) => {
-        const el = event.currentTarget;
-        setScrollTop(el.scrollTop);
-        const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
-        if (distance > 48 && options.autoScroll) {
-          onAutoScrollChange(false);
-        } else if (distance <= 2 && !options.autoScroll) {
-          onAutoScrollChange(true);
-        }
-      }}
-    >
-      <div className="log-content" style={{ width: contentWidth }}>
-        <div className="log-header-wrap">{header}</div>
-        {total === 0 ? (
-          <div className="log-empty">
-            {paused ? "已暂停" : "等待数据… 连接串口后，接收内容会显示在这里"}
-          </div>
-        ) : (
-          <div className="log-spacer" style={{ height: total * rowHeight }}>
-            {rows}
-          </div>
-        )}
+    <div className="log-view-shell">
+      <div
+        className={`log-viewport ${selectAll ? "log-select-all" : ""}`}
+        ref={viewportRef}
+        tabIndex={0}
+        style={{ fontSize }}
+        onMouseDown={(event) => {
+          if (event.button !== 0) return;
+          if (!frozen) {
+            setFrozen({ lines: lines.slice(), partial });
+          }
+        }}
+        onWheel={(event) => {
+          if (event.deltaY < 0 && options.autoScroll && !frozen) {
+            onAutoScrollChange(false);
+          }
+        }}
+        onScroll={(event) => {
+          const el = event.currentTarget;
+          setScrollTop(el.scrollTop);
+          if (frozen) return;
+          const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
+          if (distance > 48 && options.autoScroll) {
+            onAutoScrollChange(false);
+          } else if (distance <= 2 && !options.autoScroll) {
+            onAutoScrollChange(true);
+          }
+        }}
+      >
+        <div className="log-content" style={{ width: contentWidth }}>
+          <div className="log-header-wrap">{header}</div>
+          {total === 0 ? (
+            <div className="log-empty">
+              {paused ? "已暂停" : "等待数据… 连接串口后，接收内容会显示在这里"}
+            </div>
+          ) : (
+            <div className="log-spacer" style={{ height: total * rowHeight }}>
+              {rows}
+            </div>
+          )}
+        </div>
       </div>
+      {frozen && (
+        <button
+          type="button"
+          className="log-resume-follow"
+          title="恢复自动跟随（点击日志外部也可以恢复）"
+          onClick={() => {
+            setFrozen(null);
+            window.getSelection()?.removeAllRanges();
+            onAutoScrollChange(true);
+          }}
+        >
+          继续跟随
+        </button>
+      )}
     </div>
   );
 }
