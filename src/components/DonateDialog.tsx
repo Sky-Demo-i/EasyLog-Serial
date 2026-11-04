@@ -17,7 +17,7 @@ export default function DonateDialog({ onClose }: Props) {
         <div className="donate-qr-wrap">
           <img
             className="donate-qr"
-            src="/donate-wechat.jpg"
+            src="/donate-wechat-qr.png"
             alt="微信赞赏码"
             draggable={false}
           />
