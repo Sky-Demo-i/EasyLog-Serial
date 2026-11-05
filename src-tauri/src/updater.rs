@@ -9,6 +9,8 @@ use tauri::{AppHandle, Emitter};
 
 const DEFAULT_MANIFEST_URL: &str =
     "https://github.com/Sky-Demo-i/EasyLog-Serial/releases/latest/download/latest.json";
+const GITEE_MANIFEST_URLS: [&str; 1] =
+    ["https://gitee.com/sky_demo_lu/EasyLog-Serial/raw/main/update/latest.json"];
 const UPDATE_EVENT: &str = "update://progress";
 
 #[derive(Debug, Clone, Serialize)]
@@ -58,6 +60,9 @@ fn is_local_override() -> bool {
 
 fn allowed_download_url(url: &str) -> bool {
     if url.starts_with("https://github.com/Sky-Demo-i/EasyLog-Serial/releases/") {
+        return true;
+    }
+    if url.starts_with("https://gitee.com/sky_demo_lu/EasyLog-Serial/") {
         return true;
     }
     if is_local_override()
@@ -172,37 +177,21 @@ fn sha256_file(path: &Path) -> Result<String, String> {
     Ok(format!("{:x}", hasher.finalize()))
 }
 
-#[tauri::command]
-pub fn check_update() -> Result<Option<UpdateInfo>, String> {
-    let agent = ureq::AgentBuilder::new()
-        .timeout_connect(Duration::from_secs(8))
-        .timeout_read(Duration::from_secs(12))
-        .build();
-    let manifest = match read_manifest(&agent, &manifest_url()) {
-        Ok(manifest) => manifest,
-        Err(direct_error) => {
-            if is_local_override() {
-                return Err(format!("读取更新信息失败: {direct_error}"));
-            }
-            api_manifest(&agent).map_err(|api_error| {
-                format!(
-                    "直连更新源失败（{direct_error}）；GitHub API 回退失败（{api_error}）"
-                )
-            })?
-        }
-    };
-    let current = env!("CARGO_PKG_VERSION").to_string();
-    if !newer(&manifest.version, &current) {
+fn build_update(
+    manifest: UpdateManifest,
+    current: &str,
+) -> Result<Option<UpdateInfo>, String> {
+    if !newer(&manifest.version, current) {
         return Ok(None);
     }
     if !allowed_download_url(&manifest.url) {
-        return Err("更新下载地址不是允许的 GitHub Release 地址".into());
+        return Err("更新下载地址不是允许的 Gitee/GitHub Release 地址".into());
     }
     if manifest.sha256.len() != 64 {
         return Err("更新清单缺少有效的 SHA256".into());
     }
     Ok(Some(UpdateInfo {
-        current_version: current,
+        current_version: current.to_string(),
         version: manifest.version,
         notes: manifest.notes,
         pub_date: manifest.pub_date,
@@ -211,6 +200,45 @@ pub fn check_update() -> Result<Option<UpdateInfo>, String> {
         sha256: manifest.sha256.to_lowercase(),
         mandatory: manifest.mandatory,
     }))
+}
+
+#[tauri::command]
+pub fn check_update() -> Result<Option<UpdateInfo>, String> {
+    let agent = ureq::AgentBuilder::new()
+        .timeout_connect(Duration::from_secs(8))
+        .timeout_read(Duration::from_secs(12))
+        .build();
+    let current = env!("CARGO_PKG_VERSION").to_string();
+
+    if is_local_override() {
+        let manifest = read_manifest(&agent, &manifest_url())
+            .map_err(|error| format!("读取更新信息失败: {error}"))?;
+        return build_update(manifest, &current);
+    }
+
+    let mut errors: Vec<String> = Vec::new();
+
+    // Gitee is the primary source for mainland China. A reachable Gitee
+    // manifest is authoritative; if it is current we do not wait for GitHub.
+    for url in GITEE_MANIFEST_URLS {
+        match read_manifest(&agent, url) {
+            Ok(manifest) => return build_update(manifest, &current),
+            Err(error) => errors.push(format!("Gitee: {error}")),
+        }
+    }
+
+    match read_manifest(&agent, &manifest_url()) {
+        Ok(manifest) => return build_update(manifest, &current),
+        Err(error) => errors.push(format!("GitHub: {error}")),
+    }
+
+    match api_manifest(&agent) {
+        Ok(manifest) => build_update(manifest, &current),
+        Err(error) => {
+            errors.push(format!("GitHub API: {error}"));
+            Err(format!("无法连接更新源（{}）", errors.join("；")))
+        }
+    }
 }
 
 fn download_candidate(

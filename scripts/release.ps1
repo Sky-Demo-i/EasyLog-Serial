@@ -75,7 +75,7 @@ EasyLog Serial $Version — 免安装绿色版
 $Notes
 
 自动更新：
-  - 程序通过 GitHub Releases 检查更新
+  - 优先通过 Gitee 检查更新，失败时回退 GitHub
   - 下载校验通过后自动退出、替换文件并重启
   - 配置和 logs 目录保留
 

@@ -1,0 +1,9 @@
+{
+    "version":  "0.4.6",
+    "notes":  "Gitee first update source with GitHub fallback; Gitee release download URL support; keep API fallback.",
+    "pubDate":  "2026-11-05T04:16:25Z",
+    "url":  "https://gitee.com/sky_demo_lu/EasyLog-Serial/releases/download/v0.4.6/EasyLog-Serial-0.4.6-portable.zip",
+    "size":  3298147,
+    "sha256":  "600419896e247f6757d9345d577223e02e2e207cdc4605f5d9158f6f74071954",
+    "mandatory":  false
+}
