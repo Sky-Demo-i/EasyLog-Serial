@@ -47,9 +47,12 @@ try {
   if ($oldRemote) { git remote remove gitee | Out-Null }
   $pushUrl = "https://{0}:{1}@gitee.com/sky_demo_lu/EasyLog-Serial.git" -f $user, $encoded
   git remote add gitee $pushUrl
-  git -c credential.helper= push -u gitee main --tags
-  $pushCode = $LASTEXITCODE
-  git remote set-url gitee $repoUrl
+  try {
+    git -c credential.helper= push -u gitee main --tags
+    $pushCode = $LASTEXITCODE
+  } finally {
+    git remote set-url gitee $repoUrl
+  }
 
   if ($pushCode -ne 0) {
     throw @"
