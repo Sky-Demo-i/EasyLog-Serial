@@ -16,6 +16,9 @@ dist-ssr
 release/
 src-tauri/updater/target/
 
+# Gitee deploy token (never commit)
+gitee-token.txt
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
