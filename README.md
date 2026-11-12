@@ -1,8 +1,8 @@
 # EasyLog Serial
 
-EasyLogger 配套的 Windows 串口工作台 · **lyg** · **v0.4.8**
+EasyLogger 配套的 Windows 串口工作台 · **lyg** · **v0.4.9**
 
-[下载最新版](https://gitee.com/sky_demo_lu/EasyLog-Serial/releases/tag/v0.4.8) ·
+[下载最新版](https://gitee.com/sky_demo_lu/EasyLog-Serial/releases/tag/v0.4.9) ·
 [GitHub 备用](https://github.com/Sky-Demo-i/EasyLog-Serial/releases/latest) ·
 [问题反馈](https://github.com/Sky-Demo-i/EasyLog-Serial/issues)
 
@@ -25,7 +25,7 @@ EasyLogger 配套的 Windows 串口工作台 · **lyg** · **v0.4.8**
 ### 串口与 TCP
 
 - 串口参数完整配置，支持 AT 前缀、HEX、定时发送、连接后发送
-- 串口异常断开自动回连原 COM 名，不跳到其他端口
+- 串口异常断开可手动开启自动回连原 COM 名（默认关闭）
 - TCP Server 单端口、单客户端，异常断开继续监听
 
 ### 快捷指令
@@ -35,10 +35,12 @@ EasyLogger 配套的 Windows 串口工作台 · **lyg** · **v0.4.8**
 - HEX / 文本切换、序号循环发送、序号清零、每条发送后延时
 - 支持文本、JSON、SSCOM `sscom51.ini` 导入
 
-### 保存与回放
+### 保存与查看
 
-- 手动保存、JSONL 录制、会话回放
-- 自动保存 JSONL + 可读 `.log`，文件位于 `logs` 目录
+- 手动保存带完整时间戳和收发方向的 `.txt`
+- 自动保存只写时间戳 `.log`，一个启用周期一个文件，断开重连继续追加
+- 自动保存大小可选“不限”，一直叠加，不循环覆盖
+- 打开已保存的 `.log` / `.jsonl` 文件，直接搜索和查看，不进入回放
 
 ## 赞赏作者
 
