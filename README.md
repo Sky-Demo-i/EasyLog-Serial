@@ -1,8 +1,8 @@
 # EasyLog Serial
 
-EasyLogger 配套的 Windows 串口工作台 · **lyg** · **v0.4.9**
+EasyLogger 配套的 Windows 串口工作台 · **lyg** · **v0.4.10**
 
-[下载最新版](https://gitee.com/sky_demo_lu/EasyLog-Serial/releases/tag/v0.4.9) ·
+[下载最新版](https://gitee.com/sky_demo_lu/EasyLog-Serial/releases/tag/v0.4.10) ·
 [GitHub 备用](https://github.com/Sky-Demo-i/EasyLog-Serial/releases/latest) ·
 [问题反馈](https://github.com/Sky-Demo-i/EasyLog-Serial/issues)
 
@@ -38,8 +38,8 @@ EasyLogger 配套的 Windows 串口工作台 · **lyg** · **v0.4.9**
 ### 保存与查看
 
 - 手动保存带完整时间戳和收发方向的 `.txt`
-- 自动保存只写时间戳 `.log`，一个启用周期一个文件，断开重连继续追加
-- 自动保存大小可选“不限”，一直叠加，不循环覆盖
+- 自动保存只写时间戳 `.log`，一个启用周期一个主文件，断开重连继续追加
+- 自动保存大小可选“不限”，一直叠加不分段；有限大小仅在单文件超过上限时续写同周期编号文件
 - 打开已保存的 `.log` / `.jsonl` 文件，直接搜索和查看，不进入回放
 
 ## 赞赏作者
